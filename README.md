@@ -1,5 +1,7 @@
 # Odoo Agent Gateway
 
+[![CI](https://github.com/Aguimoda/odoo-agent-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/Aguimoda/odoo-agent-gateway/actions/workflows/ci.yml)
+
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
 > **Status: milestone M1 done (version 0.1.0).** The six read tools work over MCP, each call runs with the caller's own Odoo API key, and the permission scenarios pass against a real Odoo 18. Not production-ready yet: audit log, retrieval, approved writes and deployment come in later milestones.
