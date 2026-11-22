@@ -2,7 +2,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M0 (foundations).** The repository, specification, architecture decisions, local stack and CI are in place. The MCP tools themselves start in milestone M1. Nothing here is production-ready yet.
+> **Status: milestone M1 done (version 0.1.0).** The six read tools work over MCP, each call runs with the caller's own Odoo API key, and the permission scenarios pass against a real Odoo 18. Not production-ready yet: audit log, retrieval, approved writes and deployment come in later milestones.
 
 ## The problem
 
@@ -50,15 +50,15 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 
 ## Roadmap
 
-| Milestone | Delivers |
-|---|---|
-| M0 | Repository, specification, decisions, local stack, CI |
-| M1 | Read-only MCP server using each user's Odoo API key, test-first |
-| M2 | Permission-leak test suite and audit log |
-| M3 | Retrieval with pgvector, filtered by permissions |
-| M4 | Write proposals with human approval |
-| M5 | Evaluation suites and traces |
-| M6 | Cloud deployment with a public demo, and a short video |
+| Milestone | Delivers | Status |
+|---|---|---|
+| M0 | Repository, specification, decisions, local stack, CI | Done |
+| M1 | Read-only MCP server using each user's Odoo API key, test-first | Done |
+| M2 | Permission-leak test suite in CI and audit log | Next |
+| M3 | Retrieval with pgvector, filtered by permissions | |
+| M4 | Write proposals with human approval | |
+| M5 | Evaluation suites and traces | |
+| M6 | Cloud deployment with a public demo, and a short video | |
 
 The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPEC.md) (Spanish).
 
@@ -67,12 +67,40 @@ The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPE
 Requirements: Docker with Compose, and Python 3.11 or newer.
 
 ```bash
-cp .env.example .env        # then replace every placeholder password
-docker compose up -d        # Odoo 18 on http://127.0.0.1:8069 plus two PostgreSQL databases
+cp .env.example .env               # then replace every placeholder password
+docker compose up -d               # Odoo 18 on http://127.0.0.1:8069 plus two PostgreSQL databases
 
 python -m venv .venv
-.venv/bin/pip install -e ".[dev]"    # on Windows: .venv\Scripts\pip
-.venv/bin/pytest
+.venv/bin/pip install -e ".[dev]"  # on Windows: .venv\Scripts\pip
+
+python scripts/demo/setup_demo.py  # demo database with users "ana" and "luis"
+```
+
+`setup_demo.py` creates a `demo` database with the Sales app and two users: **Ana** (sales, sees only her own orders) and **Luis** (sales administrator, sees everything). Their API keys, their order ids and a random password for the demo administrator are written to `.env.demo-keys`, which git ignores. Odoo's default admin password is not kept.
+
+### Start the gateway
+
+```bash
+export ODOO_URL=http://127.0.0.1:8069 ODOO_DB=demo
+.venv/bin/python -m odoo_agent_gateway   # MCP endpoint on http://127.0.0.1:8000/mcp
+```
+
+An MCP client connects to `http://127.0.0.1:8000/mcp` with two headers per request (ADR 0005):
+
+```
+X-Odoo-Login: ana
+Authorization: Bearer <Ana's Odoo API key>
+```
+
+The gateway stores no credentials; Odoo checks them on every call.
+
+Optional settings: `GATEWAY_ALLOWED_MODELS` (comma-separated, default contacts, products and sales), `GATEWAY_ALLOWED_HOSTS` and `GATEWAY_ALLOWED_ORIGINS` (default local only), `GATEWAY_HOST` and `GATEWAY_PORT`.
+
+### Tests
+
+```bash
+.venv/bin/pytest                  # unit tests, no Odoo needed
+.venv/bin/pytest -m integration   # acceptance scenarios against the demo database
 ```
 
 All published ports are bound to `127.0.0.1`.
@@ -80,10 +108,16 @@ All published ports are bound to `127.0.0.1`.
 ## Repository layout
 
 ```
-docs/          specification, tool catalogue, architecture decision records
-src/           the gateway package
-tests/         unit tests (integration and evaluation suites arrive with M1 and M5)
-.github/       CI workflow
+docs/              specification, tool catalogue, milestone specs, decision records (ADR)
+scripts/demo/      reproducible demo data for Odoo
+src/odoo_agent_gateway/
+  odoo.py          JSON-RPC client that acts as the end user
+  tools.py         the read tools and their guardrails (ADR 0006)
+  server.py        MCP server, per-request credentials (ADR 0005)
+  app.py           FastAPI app: /health and /mcp (ADR 0007)
+tests/unit/        fast tests, no Odoo needed
+tests/integration/ acceptance scenarios against real Odoo
+.github/           CI workflow
 ```
 
 ## How this project is built

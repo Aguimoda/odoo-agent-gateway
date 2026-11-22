@@ -1,3 +1,3 @@
 """Odoo Agent Gateway: a permission-aware MCP gateway for Odoo."""
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
