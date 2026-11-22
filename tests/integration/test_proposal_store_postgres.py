@@ -138,9 +138,11 @@ async def test_a_failing_decider_records_nothing(store):
 
 
 async def test_proposals_are_listed_by_proposer_and_pending(store):
-    mine = await new_proposal(store, proposer_uid=777_001)
+    # Proposals can never be deleted, so each run needs a proposer id of its own.
+    proposer_uid = 10_000_000 + uuid.uuid4().int % 1_000_000_000
+    mine = await new_proposal(store, proposer_uid=proposer_uid)
 
-    assert [p.id for p in await store.list_by_proposer(777_001, None, 10)] == [mine.id]
+    assert [p.id for p in await store.list_by_proposer(proposer_uid, None, 10)] == [mine.id]
     assert mine.id in [p.id for p in await store.list_pending(1000)]
 
 
