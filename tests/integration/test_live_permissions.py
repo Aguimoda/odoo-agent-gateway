@@ -7,6 +7,7 @@ MCP HTTP exactly as a client would call it.
 """
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -23,9 +24,16 @@ pytestmark = pytest.mark.integration
 KEYS_FILE = Path(__file__).resolve().parents[2] / ".env.demo-keys"
 
 
+def missing(reason: str):
+    """Skip locally, but fail in CI: a skipped suite there would be a false green."""
+    if os.environ.get("CI"):
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
 def load_demo() -> dict[str, str]:
     if not KEYS_FILE.exists():
-        pytest.skip("Demo data missing: run scripts/demo/setup_demo.py first.")
+        missing("Demo data missing: run scripts/demo/setup_demo.py first.")
     lines = KEYS_FILE.read_text(encoding="utf-8").splitlines()
     return dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))
 

@@ -18,6 +18,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 KEYS_FILE = Path(__file__).resolve().parents[2] / ".env.demo-keys"
 
 
+def missing(reason: str):
+    """Skip locally, but fail in CI: a skipped suite there would be a false green."""
+    if os.environ.get("CI"):
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
 def database_url() -> str:
     if url := os.environ.get("GATEWAY_DATABASE_URL"):
         return url
@@ -25,7 +32,7 @@ def database_url() -> str:
         for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
             if line.startswith("GATEWAY_DATABASE_URL="):
                 return line.split("=", 1)[1]
-    pytest.skip("No gateway database: run scripts/demo/setup_demo.py first.")
+    missing("No gateway database: run scripts/demo/setup_demo.py first.")
 
 
 @pytest.fixture
