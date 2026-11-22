@@ -20,6 +20,7 @@ EXPECTED_TOOLS = {
     "search_records",
     "read_record",
     "summarize_data",
+    "search_knowledge",
 }
 
 
@@ -71,7 +72,7 @@ def ana_headers(key: str = ANA_KEY) -> dict:
 
 
 @pytest.mark.anyio
-async def test_exposes_exactly_the_six_read_tools_with_descriptions():
+async def test_exposes_exactly_the_seven_read_tools_with_descriptions():
     server = build_mcp_server(SETTINGS, FakeOdoo().client, audit=MemoryAuditSink())
 
     async with Client(server) as client:
@@ -238,3 +239,47 @@ def test_calls_over_the_limit_are_refused_before_reaching_odoo():
 def test_the_app_refuses_to_start_without_an_audit_database():
     with pytest.raises(ValueError, match="GATEWAY_DATABASE_URL"):
         create_app(SETTINGS, http_client_factory=FakeOdoo().client)
+
+
+# --- search_knowledge (ADR 0011) -----------------------------------------------------------
+
+
+class StubKnowledge:
+    """Stands in for KnowledgeSearch: records which session it was given."""
+
+    def __init__(self) -> None:
+        self.sessions = []
+
+    async def search(self, session, query, limit=None):
+        self.sessions.append(session)
+        return {"query": query, "results": [{"type": "document", "title": "Returns"}]}
+
+
+def test_search_knowledge_runs_with_the_callers_session_and_is_audited():
+    knowledge = StubKnowledge()
+    odoo, audit = FakeOdoo(), MemoryAuditSink()
+    app = create_app(
+        SETTINGS, http_client_factory=odoo.client, audit_sink=audit, knowledge=knowledge
+    )
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        result = call_tool(test_client, "search_knowledge", {"query": "returns"}, ana_headers())
+
+    assert result["isError"] is False
+    assert knowledge.sessions[0].login == "ana"  # Odoo-authenticated as the caller
+    (event,) = audit.events
+    assert (event.tool, event.arguments, event.result_count) == (
+        "search_knowledge",
+        {"query": "returns"},
+        1,
+    )
+
+
+def test_search_knowledge_without_an_index_reports_it_is_unavailable():
+    app = create_app(SETTINGS, http_client_factory=FakeOdoo().client, audit_sink=MemoryAuditSink())
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        result = call_tool(test_client, "search_knowledge", {"query": "returns"}, ana_headers())
+
+    assert result["isError"] is True
+    assert "knowledge_unavailable" in result["content"][0]["text"]

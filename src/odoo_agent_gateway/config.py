@@ -21,6 +21,7 @@ class Settings:
     odoo_timeout: float = 30.0
     database_url: str | None = None
     rate_limit_per_minute: int = 60
+    model_cache: str = ".cache/models"
 
     def __repr__(self) -> str:
         # The database URL contains a password: never print it.
@@ -44,6 +45,8 @@ class Settings:
             values["database_url"] = database_url
         if rate_limit := environ.get("GATEWAY_RATE_LIMIT_PER_MINUTE"):
             values["rate_limit_per_minute"] = int(rate_limit)
+        if model_cache := environ.get("GATEWAY_MODEL_CACHE"):
+            values["model_cache"] = model_cache
         return cls(**values)
 
 

@@ -78,9 +78,19 @@ class Limits:
 
 
 class ReadTools:
-    def __init__(self, session: Session, limits: Limits | None = None) -> None:
+    def __init__(
+        self, session: Session, limits: Limits | None = None, knowledge: Any = None
+    ) -> None:
         self._session = session
         self._limits = limits or Limits()
+        self._knowledge = knowledge  # a KnowledgeSearch, or None when no index is configured
+
+    async def search_knowledge(self, query: Any, limit: Any = None) -> dict[str, Any]:
+        if self._knowledge is None:
+            from odoo_agent_gateway.knowledge_store import KnowledgeUnavailable
+
+            raise KnowledgeUnavailable("Knowledge search is not configured on this gateway.")
+        return await self._knowledge.search(self._session, query, limit)
 
     # -- tools ------------------------------------------------------------------------------
 
