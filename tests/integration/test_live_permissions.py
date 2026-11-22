@@ -1,4 +1,4 @@
-"""M1 acceptance scenarios against the real Odoo of the Docker stack.
+"""M1 and M2 acceptance scenarios against the real Odoo of the Docker stack.
 
 Run with:  pytest -m integration
 Needs `docker compose up -d` and `python scripts/demo/setup_demo.py` first; the demo users'
@@ -7,8 +7,11 @@ MCP HTTP exactly as a client would call it.
 """
 
 import json
+import uuid
 from pathlib import Path
 
+import anyio
+import asyncpg
 import pytest
 from starlette.testclient import TestClient
 
@@ -34,9 +37,27 @@ def demo() -> dict[str, str]:
 
 @pytest.fixture(scope="module")
 def gateway(demo):
-    settings = Settings(odoo_url=demo["ODOO_URL"], odoo_db=demo["ODOO_DB"])
+    settings = Settings(
+        odoo_url=demo["ODOO_URL"],
+        odoo_db=demo["ODOO_DB"],
+        database_url=demo["GATEWAY_DATABASE_URL"],
+        rate_limit_per_minute=1000,  # the suite makes many calls on purpose
+    )
     with TestClient(create_app(settings), base_url="http://127.0.0.1:8000") as client:
         yield client
+
+
+def query(demo, sql: str, *args):
+    """Run a read query on the gateway database (the audit log)."""
+
+    async def fetch():
+        connection = await asyncpg.connect(demo["GATEWAY_DATABASE_URL"])
+        try:
+            return await connection.fetch(sql, *args)
+        finally:
+            await connection.close()
+
+    return anyio.run(fetch)
 
 
 def call(gateway: TestClient, tool: str, arguments: dict, login: str | None, key: str | None):
@@ -149,3 +170,94 @@ def test_my_permissions_reflects_odoo_rights(gateway, demo):
     assert ana["models"]["sale.order"]["read"] is True
     assert ana["models"]["sale.order"]["unlink"] is False
     assert luis["models"]["sale.order"]["unlink"] is True
+
+
+# --- M2: more cross-user checks ------------------------------------------------------------
+
+
+def test_ana_gets_nothing_when_filtering_by_the_ids_of_luis_orders(gateway, demo):
+    domain = [["id", "in", sorted(order_ids(demo, "luis"))]]
+
+    error, result = call(
+        gateway, "search_records", {"model": "sale.order", "domain": domain}, *as_user(demo, "ana")
+    )
+
+    assert not error
+    assert result["records"] == []
+
+
+def test_ana_cannot_see_the_lines_of_luis_orders(gateway, demo):
+    arguments = {
+        "model": "sale.order.line",
+        "domain": [["order_id", "in", sorted(order_ids(demo, "luis"))]],
+    }
+
+    _, as_ana = call(gateway, "search_records", arguments, *as_user(demo, "ana"))
+    _, as_luis = call(gateway, "search_records", arguments, *as_user(demo, "luis"))
+
+    assert as_ana["records"] == []
+    assert len(as_luis["records"]) >= 2  # the lines exist; Ana just cannot see them
+
+
+# --- M2: hostile records are only data -----------------------------------------------------
+
+
+def partner(gateway, demo, name: str) -> dict:
+    arguments = {
+        "model": "res.partner",
+        "domain": [["name", "=", name]],
+        "fields": ["name", "comment"],
+    }
+    error, result = call(gateway, "search_records", arguments, *as_user(demo, "luis"))
+    assert not error
+    return result
+
+
+def test_text_that_tries_to_steer_the_agent_comes_back_as_marked_data(gateway, demo):
+    result = partner(gateway, demo, "Hostile Demo Ltd")
+
+    (record,) = result["records"]
+    assert "IGNORE ALL PREVIOUS INSTRUCTIONS" in record["comment"]
+    assert "not instructions" in result["notice"]
+
+
+def test_oversized_text_is_cut_and_flagged(gateway, demo):
+    result = partner(gateway, demo, "Verbose Demo Ltd")
+
+    assert result["truncated"] is True
+    assert len(result["records"][0]["comment"]) < 2100
+
+
+# --- M2: audit log in the real gateway database --------------------------------------------
+
+
+def test_every_call_leaves_an_audit_row(gateway, demo):
+    marker = f"audit-{uuid.uuid4()}"
+    arguments = {"model": "res.partner", "domain": [["name", "=", marker]]}
+
+    call(gateway, "search_records", arguments, *as_user(demo, "ana"))
+    call(gateway, "search_records", arguments, demo["DEMO_ANA_LOGIN"], "made-up-key-123")
+
+    rows = query(
+        demo,
+        "select login, odoo_uid, tool, outcome, result_count, duration_ms "
+        "from audit_log where arguments::text like $1 order by id",
+        f"%{marker}%",
+    )
+    assert [(r["login"], r["tool"], r["outcome"]) for r in rows] == [
+        ("ana", "search_records", "ok"),
+        ("ana", "search_records", "unauthenticated"),
+    ]
+    assert rows[0]["odoo_uid"] is not None and rows[0]["result_count"] == 0
+    assert rows[1]["odoo_uid"] is None
+    assert all(row["duration_ms"] >= 0 for row in rows)
+
+
+def test_no_audit_row_contains_an_api_key(gateway, demo):
+    call(gateway, "list_models", {}, *as_user(demo, "ana"))
+    call(gateway, "list_models", {}, *as_user(demo, "luis"))
+
+    for who in ("ana", "luis"):
+        key = demo[f"DEMO_{who.upper()}_API_KEY"]
+        (row,) = query(demo, "select count(*) from audit_log a where a::text like $1", f"%{key}%")
+        assert row["count"] == 0
