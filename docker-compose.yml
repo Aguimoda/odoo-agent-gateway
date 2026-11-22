@@ -1,0 +1,55 @@
+name: odoo-agent-gateway
+
+# Local development stack. Every published port is bound to 127.0.0.1 only.
+# Copy .env.example to .env and set the passwords before the first start.
+
+services:
+  odoo-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD in .env}
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_DB_USER:-odoo} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  odoo:
+    image: odoo:18.0
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    environment:
+      HOST: odoo-db
+      USER: ${ODOO_DB_USER:-odoo}
+      PASSWORD: ${ODOO_DB_PASSWORD:?Set ODOO_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${ODOO_PORT:-8069}:8069"
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+
+  # ADR 0004: the gateway has its own database, separate from Odoo's.
+  gateway-db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${GATEWAY_DB_NAME:-gateway}
+      POSTGRES_USER: ${GATEWAY_DB_USER:-gateway}
+      POSTGRES_PASSWORD: ${GATEWAY_DB_PASSWORD:?Set GATEWAY_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${GATEWAY_DB_PORT:-5433}:5432"
+    volumes:
+      - gateway-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GATEWAY_DB_USER:-gateway} -d ${GATEWAY_DB_NAME:-gateway}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  odoo-db-data:
+  odoo-web-data:
+  gateway-db-data:
