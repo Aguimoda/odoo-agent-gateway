@@ -1,6 +1,6 @@
 # Returns
 
-Demo company handbook. Fictional content written for this project.
+<!-- Demo company handbook. Fictional content written for this project. -->
 
 ## Who can return what
 

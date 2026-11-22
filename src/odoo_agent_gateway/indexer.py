@@ -25,6 +25,7 @@ DEFAULT_SOURCES: tuple[tuple[str, str], ...] = (
 )
 EMBED_TEXT_LIMIT = 2000
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def content_hash(text: str) -> str:
@@ -34,8 +35,10 @@ def content_hash(text: str) -> str:
 def chunk_markdown(text: str, path: str, max_chars: int = 800) -> list[tuple[str, str]]:
     """Split Markdown into (title, content) chunks: one per section, long sections by paragraph.
 
-    A section title is its heading path, for example "Returns > Refunds".
+    A section title is its heading path, for example "Returns > Refunds". HTML comments are
+    notes for editors, not content, and are left out.
     """
+    text = _COMMENT.sub("", text)
     sections: list[tuple[str, list[str]]] = []
     stack: list[tuple[int, str]] = []
     current: list[str] = []

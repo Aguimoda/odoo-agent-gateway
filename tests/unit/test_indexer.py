@@ -177,3 +177,9 @@ async def test_records_are_read_in_pages():
     await indexer.index_records()
 
     assert len(store.records) == 7
+
+
+def test_html_comments_are_not_indexed():
+    text = "# Returns\n\n<!-- Demo handbook. Fictional content. -->\n\nWithin 30 days."
+
+    assert chunk_markdown(text, "returns.md") == [("Returns", "Within 30 days.")]
