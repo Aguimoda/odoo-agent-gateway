@@ -75,10 +75,13 @@ def main() -> None:
         lines.append(f"{prefix}_LOGIN={login}")
         lines.append(f"{prefix}_API_KEY={result['keys'][login]}")
         lines.append(f"{prefix}_ORDER_IDS={','.join(map(str, result['orders'][login]))}")
+    lines.append("# Read-only service account for the offline knowledge indexer (ADR 0011).")
+    lines.append("INDEXER_LOGIN=indexer")
+    lines.append(f"INDEXER_API_KEY={result['keys']['indexer']}")
     OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print(
-        f"Done. Users: ana, luis. Orders: {result['orders']}. "
+        f"Done. Users: ana, luis, indexer. Orders: {result['orders']}. "
         f"API keys and the admin password are in {OUTPUT.name}."
     )
 

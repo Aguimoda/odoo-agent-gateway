@@ -33,6 +33,9 @@ def ensure_user(login, name, groups):
 
 ana = ensure_user("ana", "Ana (Sales)", [group_own_docs])
 luis = ensure_user("luis", "Luis (Management)", [group_sales_admin])
+# ADR 0011: builds the knowledge index offline. Reads all sales documents; not an administrator.
+group_all_docs = env.ref("sales_team.group_sale_salesman_all_leads")  # Sales: all documents
+indexer = ensure_user("indexer", "Knowledge indexer (service)", [group_all_docs])
 
 
 def ensure_partner(name):
@@ -79,6 +82,19 @@ orders = {
     ],
 }
 
+# Order notes for the M3 retrieval tests. Ana must never see the confidential one.
+CONFIDENTIAL_NOTE = (
+    "<p>Confidential: 30% discount agreed with Acme Demo SL for the Q1 renewal. "
+    "Do not share outside management.</p>"
+)
+env["sale.order"].browse(orders["luis"][0]).note = CONFIDENTIAL_NOTE
+env["sale.order"].browse(
+    orders["ana"][0]
+).note = "<p>Customer asked for delivery before Friday; leave it at reception.</p>"
+product.product_tmpl_id.description_sale = (
+    "Ergonomic office chair with lumbar support and adjustable armrests. 5-year warranty."
+)
+
 # Replace Odoo's default administrator password with a random one. It is handed back to
 # setup_demo.py, which stores it in the git-ignored .env.demo-keys so the owner keeps access.
 admin_password = secrets.token_urlsafe(24)
@@ -90,7 +106,7 @@ keys = {
     .with_user(user)
     .sudo()
     ._generate(None, "odoo-agent-gateway demo", expires)
-    for user in (ana, luis)
+    for user in (ana, luis, indexer)
 }
 
 env.cr.commit()
