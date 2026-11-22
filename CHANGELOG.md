@@ -4,6 +4,20 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Milestone M3: permission-safe retrieval.
+
+### Added
+
+- `search_knowledge`, the seventh tool: search by meaning, in Spanish or English, over a company handbook and Odoo texts (product sale descriptions, contact notes, sales order notes), returning passages with their sources.
+- Retrieval that cannot leak (ADR 0011): the pgvector index stores Odoo records only as a vector plus a reference, and the database refuses record text. The text shown is read from Odoo at query time as the asking user, so hidden records or fields never appear and answers are never stale.
+- Local multilingual embeddings with `paraphrase-multilingual-MiniLM-L12-v2` through `fastembed`, behind a replaceable interface (ADR 0010). The model is warmed up at start-up.
+- Offline indexer (`python -m odoo_agent_gateway.index`) run with a dedicated `indexer` account that has no admin rights. It splits Markdown by heading, re-embeds only changed records and prunes removed ones.
+- Demo handbook (returns, shipping, discounts, payments), order notes including a confidential one, and the `indexer` user.
+- Shared migration runner with an advisory lock (audit log and knowledge index).
+- Integration tests: confidential note hidden from Ana but found by Luis, fresh text after an edit, no record text or names in the index, hostile indexed text returned as data, and a retrieval evaluation (6 of 6 in the top three). CI now builds the index, with the model cached.
+
 ## [0.2.0] - 2026-11-22
 
 Milestone M2: audit, rate limits and the leak suite in CI.
