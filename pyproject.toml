@@ -17,12 +17,16 @@ dependencies = [
   "uvicorn>=0.30",
   "asyncpg>=0.30",
   "fastembed>=0.9,<0.10",
+  "opentelemetry-sdk>=1.45",
 ]
 
 [project.scripts]
 odoo-agent-gateway = "odoo_agent_gateway.__main__:main"
 
 [project.optional-dependencies]
+otlp = [
+  "opentelemetry-exporter-otlp-proto-http>=1.45",
+]
 dev = [
   "pytest>=8",
   "ruff>=0.8",

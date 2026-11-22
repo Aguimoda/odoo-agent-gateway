@@ -183,8 +183,10 @@ async def _run(dataset: Path, out: Path, min_score: float, sweep: bool) -> dict[
         await store.close()
     summary = summarize(results, min_score, DEFAULT_MODEL, sweep)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "retrieval.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    (out / "retrieval.md").write_text(report_markdown(summary), encoding="utf-8")
+    (out / "retrieval.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    (out / "retrieval.md").write_text(report_markdown(summary), encoding="utf-8", newline="\n")
     return summary
 
 

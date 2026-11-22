@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx2
 
+from odoo_agent_gateway import tracing
 from odoo_agent_gateway.audit import AuditEvent, AuditSink
 from odoo_agent_gateway.config import Settings
 from odoo_agent_gateway.odoo import AuthenticationFailed, OdooClient, OdooError, OdooSession
@@ -99,36 +100,41 @@ class Gateway:
         arguments: dict[str, Any],
         action: Callable[[OdooSession], Awaitable[Any]],
     ) -> Any:
-        started = time.perf_counter()
-        login = claimed_login(headers)
-        uid: int | None = None
-        result: Any = None
-        failure: OdooError | None = None
-        try:
-            if not self._limiter.allow(login):
-                raise RateLimited("Too many calls for this login. Try again in a minute.")
-            user, api_key = credentials_from(headers)
-            session = await self.provider.client().authenticate(user, api_key)
-            uid = session.uid
-            result = await action(session)
-        except OdooError as error:
-            failure = error
-        except Exception:
-            logger.exception("Unexpected error in %s", tool)
-            failure = InternalError("Unexpected gateway error.")
+        with tracing.span(f"gateway.{tool}", **{"gateway.tool": tool}) as span:
+            started = time.perf_counter()
+            login = claimed_login(headers)
+            uid: int | None = None
+            result: Any = None
+            failure: OdooError | None = None
+            try:
+                if not self._limiter.allow(login):
+                    raise RateLimited("Too many calls for this login. Try again in a minute.")
+                user, api_key = credentials_from(headers)
+                session = await self.provider.client().authenticate(user, api_key)
+                uid = session.uid
+                result = await action(session)
+            except OdooError as error:
+                failure = error
+            except Exception:
+                logger.exception("Unexpected error in %s", tool)
+                failure = InternalError("Unexpected gateway error.")
 
-        await self._audit.record(  # raises AuditUnavailable: fail closed (ADR 0008)
-            AuditEvent(
-                request_id=request_id,
-                login=login,
-                odoo_uid=uid,
-                tool=tool,
-                arguments={key: value for key, value in arguments.items() if value is not None},
-                outcome=failure.code if failure else "ok",
-                result_count=None if failure else result_count(result),
-                duration_ms=round((time.perf_counter() - started) * 1000),
-            )
-        )
-        if failure:
-            raise failure
-        return result
+            outcome = failure.code if failure else "ok"
+            span.set_attribute("gateway.outcome", outcome)
+            with tracing.span("audit.record"):
+                await self._audit.record(  # raises AuditUnavailable: fail closed (ADR 0008)
+                    AuditEvent(
+                        request_id=request_id,
+                        login=login,
+                        odoo_uid=uid,
+                        tool=tool,
+                        arguments={k: v for k, v in arguments.items() if v is not None},
+                        outcome=outcome,
+                        result_count=None if failure else result_count(result),
+                        duration_ms=round((time.perf_counter() - started) * 1000),
+                        trace_id=tracing.current_trace_id(),
+                    )
+                )
+            if failure:
+                raise failure
+            return result

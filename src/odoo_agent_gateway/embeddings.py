@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 import anyio
 
+from odoo_agent_gateway import tracing
+
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DIMENSION = 384  # must match the vector column in migrations/002_knowledge_index.sql
 
@@ -38,7 +40,8 @@ class FastEmbedEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        return await anyio.to_thread.run_sync(self._embed_blocking, texts)
+        with tracing.span("knowledge.embed", **{"knowledge.texts": len(texts)}):
+            return await anyio.to_thread.run_sync(self._embed_blocking, texts)
 
     def _embed_blocking(self, texts: list[str]) -> list[list[float]]:
         model = self._load()

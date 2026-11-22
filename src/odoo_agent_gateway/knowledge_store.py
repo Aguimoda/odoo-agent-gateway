@@ -11,6 +11,7 @@ from typing import Protocol
 
 import asyncpg
 
+from odoo_agent_gateway import tracing
 from odoo_agent_gateway.migrations import apply_migrations
 from odoo_agent_gateway.odoo import OdooError
 
@@ -90,6 +91,10 @@ class PostgresKnowledgeStore:
         return self._pool
 
     async def search(self, vector: list[float], limit: int) -> list[Candidate]:
+        with tracing.span("knowledge.index_search", **{"knowledge.limit": limit}):
+            return await self._search(vector, limit)
+
+    async def _search(self, vector: list[float], limit: int) -> list[Candidate]:
         try:
             rows = await self._ready().fetch(
                 """

@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx2
 
+from odoo_agent_gateway import tracing
+
 
 class OdooError(Exception):
     """Base class for errors reported to the agent. Messages never contain credentials."""
@@ -89,18 +91,29 @@ class OdooClient:
             "method": "call",
             "params": {"service": service, "method": method, "args": args},
         }
-        try:
-            response = await self._http.post(self._endpoint, json=payload)
-            response.raise_for_status()
-            body = response.json()
-        except (httpx2.HTTPError, ValueError) as exc:
-            cause = None if secret in str(exc) else exc
-            raise OdooUnavailable(
-                "Odoo could not be reached or returned an invalid response."
-            ) from cause
-        if "error" in body:
-            raise _map_error(body["error"], secret)
-        return body.get("result")
+        # Span attributes name the call only: never the arguments, which hold the key and data.
+        is_object = service == "object" and len(args) >= 5
+        attributes = {
+            "odoo.service": service,
+            "odoo.method": args[4] if is_object else method,
+            "odoo.model": args[3] if is_object else None,
+        }
+        with tracing.span("odoo.rpc", **attributes) as span:
+            try:
+                response = await self._http.post(self._endpoint, json=payload)
+                response.raise_for_status()
+                body = response.json()
+            except (httpx2.HTTPError, ValueError) as exc:
+                cause = None if secret in str(exc) else exc
+                span.set_attribute("odoo.error", OdooUnavailable.code)
+                raise OdooUnavailable(
+                    "Odoo could not be reached or returned an invalid response."
+                ) from cause
+            if "error" in body:
+                error = _map_error(body["error"], secret)
+                span.set_attribute("odoo.error", error.code)
+                raise error
+            return body.get("result")
 
 
 @dataclass(frozen=True)

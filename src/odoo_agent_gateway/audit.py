@@ -28,6 +28,7 @@ class AuditEvent:
     outcome: str
     result_count: int | None
     duration_ms: int
+    trace_id: str | None = None
 
 
 class AuditSink(Protocol):
@@ -98,8 +99,8 @@ class PostgresAuditSink:
             await self._pool.execute(
                 """
                 insert into audit_log (request_id, login, odoo_uid, tool, arguments, outcome,
-                                       result_count, duration_ms)
-                values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)
+                                       result_count, duration_ms, trace_id)
+                values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
                 """,
                 event.request_id,
                 event.login,
@@ -109,6 +110,7 @@ class PostgresAuditSink:
                 event.outcome,
                 event.result_count,
                 event.duration_ms,
+                event.trace_id,
                 timeout=self._timeout,
             )
         except (OSError, asyncpg.PostgresError, asyncpg.InterfaceError, TimeoutError) as error:

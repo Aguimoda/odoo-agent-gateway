@@ -11,7 +11,7 @@ import httpx2
 from fastapi import FastAPI
 from mcp.server.transport_security import TransportSecuritySettings
 
-from odoo_agent_gateway import __version__
+from odoo_agent_gateway import __version__, tracing
 from odoo_agent_gateway.approvals import build_approval_router
 from odoo_agent_gateway.audit import AuditSink, PostgresAuditSink
 from odoo_agent_gateway.config import Settings
@@ -35,6 +35,7 @@ def create_app(
 ) -> FastAPI:
     """Build the application. A factory keeps tests isolated and configuration explicit."""
     settings = settings or Settings.from_env(os.environ)
+    tracing.configure(settings.traces)  # off unless GATEWAY_TRACES is console or otlp
     if audit_sink is None:
         if not settings.database_url:
             raise ValueError(

@@ -23,6 +23,7 @@ class Settings:
     rate_limit_per_minute: int = 60
     model_cache: str = ".cache/models"
     knowledge_min_score: float = 0.42  # see knowledge.DEFAULT_MIN_SCORE
+    traces: str = "none"  # none, console or otlp (ADR 0014)
 
     def __repr__(self) -> str:
         # The database URL contains a password: never print it.
@@ -50,6 +51,8 @@ class Settings:
             values["model_cache"] = model_cache
         if min_score := environ.get("GATEWAY_KNOWLEDGE_MIN_SCORE"):
             values["knowledge_min_score"] = float(min_score)
+        if traces := environ.get("GATEWAY_TRACES"):
+            values["traces"] = traces
         return cls(**values)
 
 
