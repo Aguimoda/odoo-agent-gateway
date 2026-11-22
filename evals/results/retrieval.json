@@ -1,0 +1,491 @@
+{
+  "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "run_at": "2026-11-22",
+  "cases": 24,
+  "answerable": 18,
+  "unanswerable": 6,
+  "metrics": {
+    "min_score": 0.42,
+    "hit_at_1": 0.8333,
+    "hit_at_3": 0.9444,
+    "mrr": 0.8796,
+    "quiet_rate": 1.0,
+    "mean_noise": 0.0
+  },
+  "calibration": [
+    {
+      "min_score": 0.2,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 3.6667
+    },
+    {
+      "min_score": 0.21,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 3.5
+    },
+    {
+      "min_score": 0.22,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 3.3333
+    },
+    {
+      "min_score": 0.23,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 3.0
+    },
+    {
+      "min_score": 0.24,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 3.0
+    },
+    {
+      "min_score": 0.25,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 2.6667
+    },
+    {
+      "min_score": 0.26,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.0,
+      "mean_noise": 2.1667
+    },
+    {
+      "min_score": 0.27,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.1667,
+      "mean_noise": 1.8333
+    },
+    {
+      "min_score": 0.28,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.1667,
+      "mean_noise": 1.8333
+    },
+    {
+      "min_score": 0.29,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.1667,
+      "mean_noise": 1.3333
+    },
+    {
+      "min_score": 0.3,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.1667,
+      "mean_noise": 1.3333
+    },
+    {
+      "min_score": 0.31,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.5,
+      "mean_noise": 0.8333
+    },
+    {
+      "min_score": 0.32,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.5,
+      "mean_noise": 0.6667
+    },
+    {
+      "min_score": 0.33,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.6667,
+      "mean_noise": 0.3333
+    },
+    {
+      "min_score": 0.34,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.6667,
+      "mean_noise": 0.3333
+    },
+    {
+      "min_score": 0.35,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.6667,
+      "mean_noise": 0.3333
+    },
+    {
+      "min_score": 0.36,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.6667,
+      "mean_noise": 0.3333
+    },
+    {
+      "min_score": 0.37,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.8333,
+      "mean_noise": 0.1667
+    },
+    {
+      "min_score": 0.38,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.8333,
+      "mean_noise": 0.1667
+    },
+    {
+      "min_score": 0.39,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.8333,
+      "mean_noise": 0.1667
+    },
+    {
+      "min_score": 0.4,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 0.8333,
+      "mean_noise": 0.1667
+    },
+    {
+      "min_score": 0.41,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.42,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.43,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.9444,
+      "mrr": 0.8796,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.44,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.8889,
+      "mrr": 0.8611,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.45,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.8889,
+      "mrr": 0.8611,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.46,
+      "hit_at_1": 0.8333,
+      "hit_at_3": 0.8889,
+      "mrr": 0.8611,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.47,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.48,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.49,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.5,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.51,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.52,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.8333,
+      "mrr": 0.8056,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.53,
+      "hit_at_1": 0.7778,
+      "hit_at_3": 0.7778,
+      "mrr": 0.7778,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.54,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.55,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.56,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.57,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.58,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.59,
+      "hit_at_1": 0.7222,
+      "hit_at_3": 0.7222,
+      "mrr": 0.7222,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    },
+    {
+      "min_score": 0.6,
+      "hit_at_1": 0.6667,
+      "hit_at_3": 0.6667,
+      "mrr": 0.6667,
+      "quiet_rate": 1.0,
+      "mean_noise": 0.0
+    }
+  ],
+  "per_case": [
+    {
+      "id": "returns-who-es",
+      "expected": "returns.md",
+      "rank": 1,
+      "top_score": 0.688
+    },
+    {
+      "id": "returns-window-en",
+      "expected": "returns.md",
+      "rank": 1,
+      "top_score": 0.753
+    },
+    {
+      "id": "returns-register-es",
+      "expected": "returns.md",
+      "rank": 1,
+      "top_score": 0.462
+    },
+    {
+      "id": "returns-refund-en",
+      "expected": "returns.md",
+      "rank": 1,
+      "top_score": 0.81
+    },
+    {
+      "id": "returns-custom-es",
+      "expected": "returns.md",
+      "rank": null,
+      "top_score": 0.501
+    },
+    {
+      "id": "shipping-canary-es",
+      "expected": "shipping.md",
+      "rank": 1,
+      "top_score": 0.721
+    },
+    {
+      "id": "shipping-mainland-en",
+      "expected": "shipping.md",
+      "rank": 1,
+      "top_score": 0.77
+    },
+    {
+      "id": "shipping-free-en",
+      "expected": "shipping.md",
+      "rank": 1,
+      "top_score": 0.535
+    },
+    {
+      "id": "shipping-floor-es",
+      "expected": "shipping.md",
+      "rank": 1,
+      "top_score": 0.624
+    },
+    {
+      "id": "shipping-damaged-es",
+      "expected": "shipping.md",
+      "rank": 3,
+      "top_score": 0.501
+    },
+    {
+      "id": "discounts-max-es",
+      "expected": "discounts.md",
+      "rank": 1,
+      "top_score": 0.596
+    },
+    {
+      "id": "discounts-approval-en",
+      "expected": "discounts.md",
+      "rank": 1,
+      "top_score": 0.616
+    },
+    {
+      "id": "discounts-promise-en",
+      "expected": "discounts.md",
+      "rank": 1,
+      "top_score": 0.637
+    },
+    {
+      "id": "payments-terms-es",
+      "expected": "payments.md",
+      "rank": 1,
+      "top_score": 0.656
+    },
+    {
+      "id": "payments-overdue-en",
+      "expected": "payments.md",
+      "rank": 1,
+      "top_score": 0.813
+    },
+    {
+      "id": "payments-cash-es",
+      "expected": "payments.md",
+      "rank": 1,
+      "top_score": 0.616
+    },
+    {
+      "id": "payments-first-order-en",
+      "expected": "payments.md",
+      "rank": 2,
+      "top_score": 0.558
+    },
+    {
+      "id": "payments-reminder-es",
+      "expected": "payments.md",
+      "rank": 1,
+      "top_score": 0.624
+    },
+    {
+      "id": "none-wifi-es",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.326
+    },
+    {
+      "id": "none-holidays-en",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.304
+    },
+    {
+      "id": "none-ceo-en",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.364
+    },
+    {
+      "id": "none-parking-es",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.408
+    },
+    {
+      "id": "none-cars-en",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.267
+    },
+    {
+      "id": "none-pension-es",
+      "expected": null,
+      "rank": null,
+      "top_score": 0.301
+    }
+  ]
+}

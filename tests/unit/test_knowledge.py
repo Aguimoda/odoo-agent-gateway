@@ -208,3 +208,22 @@ async def test_an_unavailable_index_is_reported():
 
     with pytest.raises(KnowledgeUnavailable):
         await knowledge.search(session, "returns")
+
+
+async def test_candidates_below_the_relevance_threshold_are_dropped_before_odoo():
+    session = FakeSession(
+        visible={"res.partner": {1}},
+        values={("res.partner", 1): {"comment": "Partner note", "display_name": "Acme"}},
+    )
+    candidates = [
+        document("Relevant", "kept", 0.62),
+        record("res.partner", 1, 0.20, field="comment"),
+    ]
+    knowledge = KnowledgeSearch(
+        FakeStore(candidates), FakeEmbedder(), Limits(allowed_models=ALLOWED), min_score=0.4
+    )
+
+    result = await knowledge.search(session, "q")
+
+    assert [hit["title"] for hit in result["results"]] == ["Relevant"]
+    assert session.calls == []  # nothing below the threshold reaches Odoo

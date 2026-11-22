@@ -51,7 +51,9 @@ def create_app(
     if knowledge is None and settings.database_url:
         knowledge_store = PostgresKnowledgeStore(settings.database_url)
         embedder = FastEmbedEmbedder(cache_dir=settings.model_cache)
-        knowledge = KnowledgeSearch(knowledge_store, embedder, limits)
+        knowledge = KnowledgeSearch(
+            knowledge_store, embedder, limits, min_score=settings.knowledge_min_score
+        )
 
     proposal_store: PostgresProposalStore | None = None
     if proposals is None and settings.database_url:

@@ -19,10 +19,21 @@ MAX_QUERY_LENGTH = 500
 MAX_RESULTS = 10
 DEFAULT_RESULTS = 5
 CANDIDATES = 100
+# Minimum cosine similarity for a passage to be returned. Calibrated in M5 with the retrieval
+# evaluation (evals/results/retrieval.md): from 0.41 to 0.43 no answerable question is lost and
+# every unanswerable one returns nothing; 0.42 is the middle. Override: GATEWAY_KNOWLEDGE_MIN_SCORE.
+DEFAULT_MIN_SCORE = 0.42
 
 
 class KnowledgeSearch:
-    def __init__(self, store: KnowledgeStore, embedder: Embedder, limits: Limits) -> None:
+    def __init__(
+        self,
+        store: KnowledgeStore,
+        embedder: Embedder,
+        limits: Limits,
+        min_score: float = DEFAULT_MIN_SCORE,
+    ) -> None:
+        self._min_score = min_score
         self._store = store
         self._embedder = embedder
         self._limits = limits
@@ -31,7 +42,11 @@ class KnowledgeSearch:
         query = self._check_query(query)
         limit = self._check_limit(limit)
         (vector,) = await self._embedder.embed([query])
-        candidates = await self._store.search(vector, CANDIDATES)
+        candidates = [
+            candidate
+            for candidate in await self._store.search(vector, CANDIDATES)
+            if candidate.score >= self._min_score
+        ]
         visible_texts = await self._visible_record_texts(session, candidates)
 
         results: list[dict[str, Any]] = []

@@ -22,6 +22,7 @@ class Settings:
     database_url: str | None = None
     rate_limit_per_minute: int = 60
     model_cache: str = ".cache/models"
+    knowledge_min_score: float = 0.42  # see knowledge.DEFAULT_MIN_SCORE
 
     def __repr__(self) -> str:
         # The database URL contains a password: never print it.
@@ -47,6 +48,8 @@ class Settings:
             values["rate_limit_per_minute"] = int(rate_limit)
         if model_cache := environ.get("GATEWAY_MODEL_CACHE"):
             values["model_cache"] = model_cache
+        if min_score := environ.get("GATEWAY_KNOWLEDGE_MIN_SCORE"):
+            values["knowledge_min_score"] = float(min_score)
         return cls(**values)
 
 

@@ -41,3 +41,15 @@ def test_missing_required_settings_fail_clearly(missing):
 
     with pytest.raises(ValueError, match=missing):
         Settings.from_env(environ)
+
+
+def test_the_knowledge_threshold_defaults_to_the_calibrated_value_and_can_be_overridden():
+    from odoo_agent_gateway.knowledge import DEFAULT_MIN_SCORE
+
+    default = Settings.from_env({"ODOO_URL": "http://odoo", "ODOO_DB": "demo"})
+    custom = Settings.from_env(
+        {"ODOO_URL": "http://odoo", "ODOO_DB": "demo", "GATEWAY_KNOWLEDGE_MIN_SCORE": "0.3"}
+    )
+
+    assert default.knowledge_min_score == DEFAULT_MIN_SCORE == 0.42
+    assert custom.knowledge_min_score == 0.3
