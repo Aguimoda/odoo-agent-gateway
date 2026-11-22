@@ -6,7 +6,13 @@ import time
 from collections import deque
 from collections.abc import Callable
 
+from odoo_agent_gateway.odoo import OdooError
+
 ANONYMOUS = "anonymous"
+
+
+class RateLimited(OdooError):
+    code = "rate_limited"
 
 
 class RateLimiter:

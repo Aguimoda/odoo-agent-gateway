@@ -31,6 +31,10 @@ class AuditEvent:
 
 
 class AuditSink(Protocol):
+    async def start(self) -> None: ...
+
+    async def close(self) -> None: ...
+
     async def record(self, event: AuditEvent) -> None: ...
 
 
@@ -48,6 +52,12 @@ class MemoryAuditSink:
 
     available: bool = True
     events: list[AuditEvent] = field(default_factory=list)
+
+    async def start(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
 
     async def record(self, event: AuditEvent) -> None:
         if not self.available:

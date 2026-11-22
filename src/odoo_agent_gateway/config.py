@@ -19,6 +19,12 @@ class Settings:
     allowed_hosts: tuple[str, ...] = LOCAL_HOSTS
     allowed_origins: tuple[str, ...] = LOCAL_ORIGINS
     odoo_timeout: float = 30.0
+    database_url: str | None = None
+    rate_limit_per_minute: int = 60
+
+    def __repr__(self) -> str:
+        # The database URL contains a password: never print it.
+        return f"Settings(odoo_url={self.odoo_url!r}, odoo_db={self.odoo_db!r})"
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> Settings:
@@ -34,6 +40,10 @@ class Settings:
             values["allowed_origins"] = tuple(origins)
         if timeout := environ.get("GATEWAY_ODOO_TIMEOUT"):
             values["odoo_timeout"] = float(timeout)
+        if database_url := environ.get("GATEWAY_DATABASE_URL"):
+            values["database_url"] = database_url
+        if rate_limit := environ.get("GATEWAY_RATE_LIMIT_PER_MINUTE"):
+            values["rate_limit_per_minute"] = int(rate_limit)
         return cls(**values)
 
 

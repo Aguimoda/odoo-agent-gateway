@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from mcp.server.transport_security import TransportSecuritySettings
 
 from odoo_agent_gateway import __version__
+from odoo_agent_gateway.audit import AuditSink, PostgresAuditSink
 from odoo_agent_gateway.config import Settings
 from odoo_agent_gateway.server import HttpClientFactory, OdooProvider, build_mcp_server
 
@@ -18,12 +19,21 @@ from odoo_agent_gateway.server import HttpClientFactory, OdooProvider, build_mcp
 def create_app(
     settings: Settings | None = None,
     http_client_factory: HttpClientFactory | None = None,
+    audit_sink: AuditSink | None = None,
 ) -> FastAPI:
     """Build the application. A factory keeps tests isolated and configuration explicit."""
     settings = settings or Settings.from_env(os.environ)
+    if audit_sink is None:
+        if not settings.database_url:
+            raise ValueError(
+                "GATEWAY_DATABASE_URL is required: the gateway does not run without its "
+                "audit log (ADR 0008)."
+            )
+        audit_sink = PostgresAuditSink(settings.database_url)
     factory = http_client_factory or (lambda: httpx2.AsyncClient(timeout=settings.odoo_timeout))
     provider = OdooProvider(settings, factory)
-    mcp_app = build_mcp_server(settings, factory, provider).streamable_http_app(
+    mcp_server = build_mcp_server(settings, factory, provider, audit=audit_sink)
+    mcp_app = mcp_server.streamable_http_app(
         stateless_http=True,
         json_response=True,
         transport_security=TransportSecuritySettings(
@@ -35,11 +45,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        async with mcp_app.router.lifespan_context(mcp_app):
-            try:
+        await audit_sink.start()  # applies the schema; fails start-up if the DB is down
+        try:
+            async with mcp_app.router.lifespan_context(mcp_app):
                 yield
-            finally:
-                await provider.aclose()
+        finally:
+            await provider.aclose()
+            await audit_sink.close()
 
     app = FastAPI(title="Odoo Agent Gateway", version=__version__, lifespan=lifespan)
 

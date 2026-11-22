@@ -6,6 +6,7 @@ from mcp.client.client import Client
 from starlette.testclient import TestClient
 
 from odoo_agent_gateway.app import create_app
+from odoo_agent_gateway.audit import MemoryAuditSink
 from odoo_agent_gateway.config import Settings
 from odoo_agent_gateway.server import build_mcp_server
 
@@ -71,7 +72,7 @@ def ana_headers(key: str = ANA_KEY) -> dict:
 
 @pytest.mark.anyio
 async def test_exposes_exactly_the_six_read_tools_with_descriptions():
-    server = build_mcp_server(SETTINGS, FakeOdoo().client)
+    server = build_mcp_server(SETTINGS, FakeOdoo().client, audit=MemoryAuditSink())
 
     async with Client(server) as client:
         tools = (await client.list_tools()).tools
@@ -83,7 +84,7 @@ async def test_exposes_exactly_the_six_read_tools_with_descriptions():
 @pytest.mark.anyio
 async def test_calls_without_credentials_are_unauthenticated():
     odoo = FakeOdoo()
-    server = build_mcp_server(SETTINGS, odoo.client)
+    server = build_mcp_server(SETTINGS, odoo.client, audit=MemoryAuditSink())
 
     async with Client(server) as client:
         result = await client.call_tool("search_records", {"model": "sale.order"})
@@ -98,7 +99,7 @@ async def test_calls_without_credentials_are_unauthenticated():
 
 def test_a_tool_call_reaches_odoo_with_the_callers_own_key():
     odoo = FakeOdoo()
-    app = create_app(SETTINGS, http_client_factory=odoo.client)
+    app = create_app(SETTINGS, audit_sink=MemoryAuditSink(), http_client_factory=odoo.client)
 
     with TestClient(app, base_url=LOCAL) as test_client:
         result = call_tool(test_client, "search_records", {"model": "sale.order"}, ana_headers())
@@ -120,7 +121,7 @@ def test_a_tool_call_reaches_odoo_with_the_callers_own_key():
 )
 def test_bad_or_missing_credentials_are_unauthenticated_and_never_echoed(headers):
     odoo = FakeOdoo()
-    app = create_app(SETTINGS, http_client_factory=odoo.client)
+    app = create_app(SETTINGS, audit_sink=MemoryAuditSink(), http_client_factory=odoo.client)
 
     with TestClient(app, base_url=LOCAL) as test_client:
         result = call_tool(test_client, "search_records", {"model": "sale.order"}, headers)
@@ -132,7 +133,7 @@ def test_bad_or_missing_credentials_are_unauthenticated_and_never_echoed(headers
 
 
 def test_guardrail_errors_come_back_as_invalid_request():
-    app = create_app(SETTINGS, http_client_factory=FakeOdoo().client)
+    app = create_app(SETTINGS, audit_sink=MemoryAuditSink(), http_client_factory=FakeOdoo().client)
 
     with TestClient(app, base_url=LOCAL) as test_client:
         result = call_tool(test_client, "search_records", {"model": "hr.employee"}, ana_headers())
@@ -142,7 +143,7 @@ def test_guardrail_errors_come_back_as_invalid_request():
 
 
 def test_requests_with_an_unexpected_host_header_are_refused():
-    app = create_app(SETTINGS, http_client_factory=FakeOdoo().client)
+    app = create_app(SETTINGS, audit_sink=MemoryAuditSink(), http_client_factory=FakeOdoo().client)
 
     with TestClient(app, base_url="http://evil.example") as test_client:
         response = test_client.post(
@@ -155,7 +156,85 @@ def test_requests_with_an_unexpected_host_header_are_refused():
 
 
 def test_health_still_answers_next_to_mcp():
-    app = create_app(SETTINGS, http_client_factory=FakeOdoo().client)
+    app = create_app(SETTINGS, audit_sink=MemoryAuditSink(), http_client_factory=FakeOdoo().client)
 
     with TestClient(app, base_url=LOCAL) as test_client:
         assert test_client.get("/health").json()["status"] == "ok"
+
+
+# --- audit log (ADR 0008) and rate limit (ADR 0009) ---------------------------------------
+
+
+def make_app(audit=None, **settings):
+    odoo = FakeOdoo()
+    audit = audit if audit is not None else MemoryAuditSink()
+    app_settings = Settings(odoo_url="http://odoo.test", odoo_db="demo", **settings)
+    return create_app(app_settings, audit_sink=audit, http_client_factory=odoo.client), odoo, audit
+
+
+def test_a_successful_call_is_audited_with_who_what_and_how_long():
+    app, _, audit = make_app()
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        call_tool(test_client, "search_records", {"model": "sale.order", "limit": 5}, ana_headers())
+
+    (event,) = audit.events
+    assert (event.login, event.odoo_uid, event.tool) == ("ana", 8, "search_records")
+    assert event.arguments == {"model": "sale.order", "limit": 5}
+    assert event.outcome == "ok"
+    assert event.result_count == 1
+    assert event.duration_ms >= 0
+    assert event.request_id
+
+
+def test_a_failed_login_is_audited_without_a_user_id_or_the_key():
+    app, _, audit = make_app()
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        call_tool(test_client, "list_models", {}, ana_headers("made-up-key"))
+
+    (event,) = audit.events
+    assert (event.login, event.odoo_uid, event.outcome) == ("ana", None, "unauthenticated")
+    assert "made-up-key" not in repr(event)
+    assert ANA_KEY not in repr(event)
+
+
+def test_guardrail_errors_are_audited_with_their_code():
+    app, _, audit = make_app()
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        call_tool(test_client, "search_records", {"model": "hr.employee"}, ana_headers())
+
+    assert audit.events[0].outcome == "invalid_request"
+
+
+def test_no_audit_means_no_data():
+    app, odoo, _ = make_app(audit=MemoryAuditSink(available=False))
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        result = call_tool(test_client, "search_records", {"model": "sale.order"}, ana_headers())
+
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "audit_unavailable" in text
+    assert "S00021" not in text
+
+
+def test_calls_over_the_limit_are_refused_before_reaching_odoo():
+    app, odoo, audit = make_app(rate_limit_per_minute=2)
+
+    with TestClient(app, base_url=LOCAL) as test_client:
+        results = [call_tool(test_client, "list_models", {}, ana_headers()) for _ in range(3)]
+        other = call_tool(test_client, "list_models", {}, {"x-odoo-login": "luis"})
+
+    assert [r["isError"] for r in results] == [False, False, True]
+    assert "rate_limited" in results[2]["content"][0]["text"]
+    logins_sent_to_odoo = [r["args"][1] for r in odoo.requests if r["service"] == "common"]
+    assert logins_sent_to_odoo == ["ana", "ana"]
+    assert audit.events[2].outcome == "rate_limited"
+    assert "rate_limited" not in other["content"][0]["text"]  # luis has his own budget
+
+
+def test_the_app_refuses_to_start_without_an_audit_database():
+    with pytest.raises(ValueError, match="GATEWAY_DATABASE_URL"):
+        create_app(SETTINGS, http_client_factory=FakeOdoo().client)

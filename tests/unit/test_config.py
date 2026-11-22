@@ -11,8 +11,13 @@ def test_settings_read_the_environment():
             "ODOO_DB": "demo",
             "GATEWAY_ALLOWED_MODELS": "sale.order, res.partner",
             "GATEWAY_ALLOWED_HOSTS": "gateway.example.com",
+            "GATEWAY_DATABASE_URL": "postgresql://gateway@db/gateway",
+            "GATEWAY_RATE_LIMIT_PER_MINUTE": "30",
         }
     )
+
+    assert settings.database_url == "postgresql://gateway@db/gateway"
+    assert settings.rate_limit_per_minute == 30
 
     assert settings.odoo_url == "http://127.0.0.1:8069"
     assert settings.odoo_db == "demo"
@@ -25,6 +30,8 @@ def test_defaults_are_safe():
 
     assert settings.allowed_models == DEFAULT_ALLOWED_MODELS
     assert settings.allowed_hosts == ("127.0.0.1:*", "localhost:*", "[::1]:*")
+    assert settings.database_url is None
+    assert settings.rate_limit_per_minute == 60
 
 
 @pytest.mark.parametrize("missing", ["ODOO_URL", "ODOO_DB"])
