@@ -14,7 +14,11 @@ dependencies = [
   "fastapi>=0.115",
   "mcp>=2.3,<3",
   "httpx2>=2.16",
+  "uvicorn>=0.30",
 ]
+
+[project.scripts]
+odoo-agent-gateway = "odoo_agent_gateway.__main__:main"
 
 [project.optional-dependencies]
 dev = [
