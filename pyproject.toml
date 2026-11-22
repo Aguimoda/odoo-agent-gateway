@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "odoo-agent-gateway"
+dynamic = ["version"]
+description = "A permission-aware MCP gateway that lets AI agents work on Odoo as the person asking, never as an administrator."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Daniel Moreno de Aguinaga" }]
+dependencies = [
+  "fastapi>=0.115",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "httpx>=0.27",
+  "ruff>=0.8",
+]
+
+[tool.hatch.version]
+path = "src/odoo_agent_gateway/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/odoo_agent_gateway"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
