@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M4 done (version 0.4.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is written to an append-only audit log and is rate-limited per login. The whole acceptance suite runs in CI against a real Odoo 18 on every push. Not production-ready yet: broader evaluation and deployment come in later milestones.
+> **Status: milestone M5 done (version 0.5.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the public deployment comes in M6.
 
 ## The problem
 
@@ -61,8 +61,8 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M2 | Audit log, rate limits, permission-leak suite in CI against real Odoo | Done |
 | M3 | Retrieval with pgvector, filtered by permissions | Done |
 | M4 | Write proposals with four-eyes approval | Done |
-| M5 | Evaluation suites and traces | Next |
-| M6 | Cloud deployment with a public demo, and a short video | |
+| M5 | Retrieval evaluation in CI, calibrated threshold, traces, usage report, real-agent harness | Done |
+| M6 | Cloud deployment with a public demo, and a short video | Next |
 
 The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPEC.md) (Spanish).
 
@@ -104,7 +104,7 @@ Authorization: Bearer <Ana's Odoo API key>
 
 The gateway stores no credentials; Odoo checks them on every call.
 
-Optional settings: `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60 per login), `GATEWAY_MODEL_CACHE` (default `.cache/models`), `GATEWAY_ALLOWED_MODELS` (comma-separated, default contacts, products and sales), `GATEWAY_ALLOWED_HOSTS` and `GATEWAY_ALLOWED_ORIGINS` (default local only), `GATEWAY_HOST` and `GATEWAY_PORT`.
+Optional settings: `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60 per login), `GATEWAY_MODEL_CACHE` (default `.cache/models`), `GATEWAY_KNOWLEDGE_MIN_SCORE` (default 0.42, calibrated), `GATEWAY_TRACES` (`none`, `console` or `otlp`), `GATEWAY_ALLOWED_MODELS` (comma-separated, default contacts, products and sales), `GATEWAY_ALLOWED_HOSTS` and `GATEWAY_ALLOWED_ORIGINS` (default local only), `GATEWAY_HOST` and `GATEWAY_PORT`.
 
 ### Audit log
 
@@ -138,11 +138,45 @@ CI runs both on every push. The integration job starts Odoo 18 in Docker, create
 
 All published ports are bound to `127.0.0.1`.
 
+## Evaluation and observability
+
+Quality is measured, not assumed ([ADR 0013](docs/adr/0013-evaluation-approach.md), [ADR 0014](docs/adr/0014-opentelemetry-traces.md)).
+
+**Retrieval** (24 labelled questions in Spanish and English, 6 of them unanswerable from the handbook; [full results](evals/results/retrieval.md)):
+
+| hit@1 | hit@3 | MRR | quiet on unanswerable | noise on unanswerable |
+|---|---|---|---|---|
+| 0.83 | 0.94 | 0.88 | 100% | 0 results |
+
+Without a threshold, every unanswerable question returned five irrelevant passages. A sweep showed that from 0.41 to 0.43 no answer is lost and all unanswerable questions return nothing, so the relevance threshold is 0.42 (`GATEWAY_KNOWLEDGE_MIN_SCORE`). One known miss remains: "muebles hechos a medida" does not reach "custom-made". CI fails if hit@3 drops below 0.85, MRR below 0.75 or quiet below 0.80.
+
+```bash
+set -a; . ./.env.demo-keys; set +a
+.venv/bin/python -m odoo_agent_gateway.evals.retrieval --calibrate   # writes evals/results/retrieval.md
+```
+
+**Traces.** `GATEWAY_TRACES=console` (or `otlp`, with `pip install -e ".[otlp]"` and `OTEL_EXPORTER_OTLP_ENDPOINT`) emits one span per call with children for Odoo calls, embedding, index search and the audit write; spans never carry keys or argument values, and each audit row stores its trace id. A real search took 50 ms, of which 35 ms was authenticating against Odoo.
+
+**Usage report** from the audit log: calls, error codes and p50/p95/max latency per tool.
+
+```bash
+.venv/bin/python -m odoo_agent_gateway.report --since 24h
+```
+
+**Real-agent evaluation**, run by hand with any OpenAI-compatible provider (Groq, Cerebras or a local server). With the gateway running, it lets the model use the tools as Ana or Luis and scores the first tool chosen, cited sources, leaks of Luis's confidential note to Ana and resistance to hostile text:
+
+```bash
+export AGENT_EVAL_BASE_URL=https://api.groq.com/openai/v1 AGENT_EVAL_MODEL=openai/gpt-oss-120b
+export AGENT_EVAL_API_KEY=...        # your own key; never written to results
+.venv/bin/python -m odoo_agent_gateway.evals.agent   # writes evals/results/agent-<model>.md
+```
+
 ## Repository layout
 
 ```
 docs/              specification, tool catalogue, milestone specs, decision records (ADR)
 scripts/demo/      reproducible demo data for Odoo, and the demo handbook
+evals/             labelled retrieval set, agent scenarios and committed results
 src/odoo_agent_gateway/
   odoo.py          JSON-RPC client that acts as the end user
   tools.py         the read tools and their guardrails (ADR 0006)
@@ -154,6 +188,9 @@ src/odoo_agent_gateway/
   proposal_store.py  change_proposals table; decided proposals are final
   approvals.py     the /approvals API (not an MCP tool)
   gateway.py       the shared path: limit, credentials, action, audit
+  tracing.py       OpenTelemetry spans, off by default (ADR 0014)
+  report.py        usage report from the audit log
+  evals/           retrieval evaluation and real-agent harness (ADR 0013)
   knowledge_store.py  pgvector index; refuses record text
   embeddings.py    local multilingual embeddings (ADR 0010)
   indexer.py, index.py  offline indexer and its command

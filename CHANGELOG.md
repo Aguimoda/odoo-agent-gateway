@@ -4,6 +4,18 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-23
+
+Milestone M5: evaluation and observability.
+
+### Added
+
+- Retrieval evaluation: 24 labelled questions in Spanish and English, 6 unanswerable, with hit@1, hit@3, MRR, quiet rate and noise computed for any threshold from one collection run (`python -m odoo_agent_gateway.evals.retrieval --calibrate`). Results committed under `evals/results/`.
+- A relevance threshold calibrated from that data: 0.42 keeps every answer found without a threshold (hit@3 0.94, MRR 0.88) and silences all unanswerable questions, which previously returned five passages each. CI gates hit@3, MRR and quiet rate.
+- OpenTelemetry spans for each call, Odoo RPC, embedding, index search and audit write, off by default (`GATEWAY_TRACES=console|otlp`, OTLP as an optional extra); the audit log stores the trace id (migration 004). Spans never carry keys or argument values.
+- Usage report from the audit log (`python -m odoo_agent_gateway.report`): calls, error codes and p50/p95/max latency per tool.
+- Real-agent evaluation for any OpenAI-compatible provider (Groq, Cerebras or local), with ten scenarios scoring tool choice, citations, cross-user leaks and hostile-text resistance. The provider key is read from the environment only.
+
 ## [0.4.0] - 2026-11-23
 
 Milestone M4: write proposals with four-eyes approval.
