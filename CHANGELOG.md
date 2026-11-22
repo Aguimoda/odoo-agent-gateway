@@ -4,6 +4,22 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-23
+
+Milestone M4: write proposals with four-eyes approval.
+
+### Added
+
+- `propose_change` and `list_my_proposals` MCP tools. Proposals are checked as the proposer (allowlisted model, visible record, 1 to 10 writable fields of simple types, never state, company, archiving, line lists or binary fields, and a 10 to 500 character reason) and change nothing in Odoo.
+- `/approvals` API, deliberately not an MCP tool: `GET /pending`, `POST /{id}/approve`, `POST /{id}/reject`, with the approver's own Odoo credentials (ADR 0012).
+- Four-eyes rule: nobody approves their own proposal, because the agent holds its user's key. The write runs in Odoo as the approver; stale values end in `conflict`; business-rule refusals end in `failed`; missing approver rights leave the proposal pending; proposals expire after 7 days.
+- `change_proposals` table storing new values and a fingerprint of the old ones (not the values), guarded by a trigger: content immutable, decisions final, no delete or truncate.
+- Integration tests: Odoo records the approver as the writer, four-eyes refusal, an approver who cannot see the record, conflict, final decisions, refused fields, pending lists per approver.
+
+### Changed
+
+- The call path (rate limit, credentials, action, fail-closed audit) is now one `Gateway.execute`, shared by the MCP tools and the approval API.
+
 ## [0.3.0] - 2026-11-22
 
 Milestone M3: permission-safe retrieval.

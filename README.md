@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M3 done (version 0.3.0).** Seven read tools work over MCP, including permission-safe retrieval over a company handbook and Odoo texts. Each call runs with the caller's own Odoo API key, is written to an append-only audit log and is rate-limited per login. The permission-leak suite, retrieval included, runs in CI against a real Odoo 18 on every push. Not production-ready yet: approved writes, broader evaluation and deployment come in later milestones.
+> **Status: milestone M4 done (version 0.4.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is written to an append-only audit log and is rate-limited per login. The whole acceptance suite runs in CI against a real Odoo 18 on every push. Not production-ready yet: broader evaluation and deployment come in later milestones.
 
 ## The problem
 
@@ -31,7 +31,7 @@ MCP client (an agent)
 ```
 
 - **Acts as the user.** Requests reach Odoo with the asking user's API key, so Odoo's own access rights and record rules decide what is visible ([ADR 0002](docs/adr/0002-act-as-the-user-no-sudo.md)).
-- **Proposes, never executes.** The agent can only propose a change. A person approves it through a separate channel, and Odoo re-checks the permission at that moment ([ADR 0003](docs/adr/0003-agent-proposes-human-approves.md)).
+- **Proposes, never executes.** The agent can only propose a change. A **different** person approves it through a separate API, and the change runs in Odoo **with the approver's rights**, so Odoo checks them at that moment. Nobody approves their own proposal, because the agent holds its user's key; edits made in between end in a conflict instead of being overwritten ([ADR 0003](docs/adr/0003-agent-proposes-human-approves.md), [ADR 0012](docs/adr/0012-four-eyes-approval.md)).
 - **Retrieval that cannot leak.** The vector index only ranks. Odoo record texts are never stored in it; the text shown is read from Odoo at query time, as the asking user, so a hidden record or field never appears ([ADR 0011](docs/adr/0011-index-ranks-odoo-answers.md)). Embeddings run locally, so no company text goes to a third party ([ADR 0010](docs/adr/0010-local-multilingual-embeddings.md)).
 - **Accountable.** Every call, including failed logins and refused ones, leaves a row in an append-only audit log; if the row cannot be written, no data is returned ([ADR 0008](docs/adr/0008-append-only-audit-log.md)).
 - **Provable.** Permission-leak checks run in CI against a real Odoo 18 with two demo users of different rights and hostile demo records.
@@ -47,7 +47,7 @@ MCP client (an agent)
 | `read_record` | One record | M1 |
 | `summarize_data` | Counts and sums, grouped | M1 |
 | `search_knowledge` | Search by meaning over the handbook and the Odoo texts the caller may see, with sources | M3 |
-| `propose_change` | Propose a write; a human approves it | M4 |
+| `propose_change` | Propose a change to one record; nothing changes until a different person approves | M4 |
 | `list_my_proposals` | Status of the user's proposals | M4 |
 
 Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odoo methods, privileged accounts, and changes without human approval. Details in [docs/TOOLS.md](docs/TOOLS.md) (Spanish).
@@ -60,8 +60,8 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M1 | Read-only MCP server using each user's Odoo API key, test-first | Done |
 | M2 | Audit log, rate limits, permission-leak suite in CI against real Odoo | Done |
 | M3 | Retrieval with pgvector, filtered by permissions | Done |
-| M4 | Write proposals with human approval | Next |
-| M5 | Evaluation suites and traces | |
+| M4 | Write proposals with four-eyes approval | Done |
+| M5 | Evaluation suites and traces | Next |
 | M6 | Cloud deployment with a public demo, and a short video | |
 
 The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPEC.md) (Spanish).
@@ -110,6 +110,23 @@ Optional settings: `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60 per login), `GATE
 
 Each tool call writes one row to `audit_log`: time, request id, the login the caller claimed, the Odoo user id when Odoo confirmed it, tool, arguments, outcome (`ok` or an error code such as `unauthenticated`, `forbidden` or `rate_limited`), number of records returned and duration. API keys and returned data are never stored, and the table rejects `UPDATE`, `DELETE` and `TRUNCATE`.
 
+### Approving proposals
+
+Approval is not an MCP tool. A different person uses the approval API with their own Odoo login and API key, the same two headers as MCP:
+
+```bash
+# proposals by others on records you can read, with live values
+curl -H "X-Odoo-Login: luis" -H "Authorization: Bearer $LUIS_KEY" \
+     http://127.0.0.1:8000/approvals/pending
+
+# approve (or /reject) with a note
+curl -X POST -H "X-Odoo-Login: luis" -H "Authorization: Bearer $LUIS_KEY" \
+     -H "Content-Type: application/json" -d '{"note": "Checked with the customer."}' \
+     http://127.0.0.1:8000/approvals/42/approve
+```
+
+Possible outcomes: `applied`, `conflict` (the record changed after the proposal), `failed` (Odoo refused the values), `expired` (older than 7 days) or `rejected`. Errors: `four_eyes` (your own proposal), `forbidden` (you cannot see or edit the record; it stays pending for someone who can), `conflict` (already decided). Every decision is audited.
+
 ### Tests
 
 ```bash
@@ -133,6 +150,10 @@ src/odoo_agent_gateway/
   audit.py         append-only audit log, fail closed (ADR 0008)
   ratelimit.py     per-login rate limit (ADR 0009)
   knowledge.py     search_knowledge: index ranks, Odoo supplies the text (ADR 0011)
+  proposals.py     propose, approve, reject: four eyes, conflict check (ADR 0012)
+  proposal_store.py  change_proposals table; decided proposals are final
+  approvals.py     the /approvals API (not an MCP tool)
+  gateway.py       the shared path: limit, credentials, action, audit
   knowledge_store.py  pgvector index; refuses record text
   embeddings.py    local multilingual embeddings (ADR 0010)
   indexer.py, index.py  offline indexer and its command

@@ -12,7 +12,7 @@ When the change is finally written, it must respect Odoo's rules for the person 
 
 - **Nobody approves their own proposal.** The approver must be a different Odoo user (compared by the user id Odoo confirms, not by the login header). Otherwise the result is `four_eyes`.
 - **Approval is not an MCP tool.** It lives at `/approvals`, a small HTTP API next to `/mcp`, authenticated with the approver's own Odoo login and API key.
-- **The write runs as the approver.** Odoo applies the approver's access rights, record rules and field groups at that moment. Odoo errors make the proposal `failed`, with the error code kept.
+- **The write runs as the approver.** Odoo applies the approver's access rights, record rules and field groups at that moment. If Odoo refuses because the approver lacks rights, the proposal stays pending for someone who has them; if it refuses on business rules (an invalid value), the proposal becomes `failed`, with the error code kept. (Clarified while implementing M4, before release.)
 - **Optimistic concurrency.** At proposal time the gateway stores a SHA-256 fingerprint of the current values of the fields to change. At approval it re-reads them as the approver; if the fingerprint differs, the result is `conflict` and nothing is written.
 - **Minimal copies of Odoo data.** A proposal stores the new values the person typed and the reason, not the old values. Approvers see the current values read live from Odoo.
 - **Narrow writes.** Only existing records, at most 10 fields, simple field types (text, number, date, boolean, selection, many2one). Never state, company, `active` (archiving), x2many lists, binary fields or read-only fields.
