@@ -40,6 +40,8 @@ jobs:
     name: Permission-leak suite (real Odoo 18)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      GATEWAY_MODEL_CACHE: ${{ github.workspace }}/.cache/models
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -64,6 +66,15 @@ jobs:
           http://127.0.0.1:8069/web/login
       - name: Create demo data (users Ana and Luis, hostile records)
         run: python scripts/demo/setup_demo.py
+      - name: Cache the embedding model
+        uses: actions/cache@v6
+        with:
+          path: .cache/models
+          key: fastembed-paraphrase-multilingual-MiniLM-L12-v2
+      - name: Build the knowledge index (indexer service account)
+        run: |
+          set -a; . ./.env.demo-keys; set +a
+          python -m odoo_agent_gateway.index --docs scripts/demo/knowledge
       - name: Integration tests
         run: pytest -m integration -v
       - name: Container logs on failure
