@@ -1,4 +1,4 @@
-"""FastAPI application: `/health` plus the MCP endpoint at `/mcp`."""
+"""FastAPI application: `/health`, the approval API at `/approvals` and MCP at `/mcp`."""
 
 from __future__ import annotations
 
@@ -12,12 +12,17 @@ from fastapi import FastAPI
 from mcp.server.transport_security import TransportSecuritySettings
 
 from odoo_agent_gateway import __version__
+from odoo_agent_gateway.approvals import build_approval_router
 from odoo_agent_gateway.audit import AuditSink, PostgresAuditSink
 from odoo_agent_gateway.config import Settings
 from odoo_agent_gateway.embeddings import FastEmbedEmbedder
+from odoo_agent_gateway.gateway import Gateway, HttpClientFactory, OdooProvider
 from odoo_agent_gateway.knowledge import KnowledgeSearch
 from odoo_agent_gateway.knowledge_store import PostgresKnowledgeStore
-from odoo_agent_gateway.server import HttpClientFactory, OdooProvider, build_mcp_server
+from odoo_agent_gateway.proposal_store import PostgresProposalStore
+from odoo_agent_gateway.proposals import ProposalService
+from odoo_agent_gateway.ratelimit import RateLimiter
+from odoo_agent_gateway.server import build_mcp_server
 from odoo_agent_gateway.tools import Limits
 
 
@@ -26,6 +31,7 @@ def create_app(
     http_client_factory: HttpClientFactory | None = None,
     audit_sink: AuditSink | None = None,
     knowledge: Any = None,
+    proposals: Any = None,
 ) -> FastAPI:
     """Build the application. A factory keeps tests isolated and configuration explicit."""
     settings = settings or Settings.from_env(os.environ)
@@ -38,15 +44,29 @@ def create_app(
         audit_sink = PostgresAuditSink(settings.database_url)
     factory = http_client_factory or (lambda: httpx2.AsyncClient(timeout=settings.odoo_timeout))
     provider = OdooProvider(settings, factory)
+    limits = Limits(allowed_models=settings.allowed_models)
+
     knowledge_store: PostgresKnowledgeStore | None = None
     embedder: FastEmbedEmbedder | None = None
     if knowledge is None and settings.database_url:
         knowledge_store = PostgresKnowledgeStore(settings.database_url)
         embedder = FastEmbedEmbedder(cache_dir=settings.model_cache)
-        limits = Limits(allowed_models=settings.allowed_models)
         knowledge = KnowledgeSearch(knowledge_store, embedder, limits)
+
+    proposal_store: PostgresProposalStore | None = None
+    if proposals is None and settings.database_url:
+        proposal_store = PostgresProposalStore(settings.database_url)
+        proposals = ProposalService(proposal_store, limits)
+
+    # One gateway path, one rate limiter, for both channels.
+    gateway = Gateway(provider, audit_sink, RateLimiter(settings.rate_limit_per_minute))
     mcp_server = build_mcp_server(
-        settings, factory, provider, audit=audit_sink, knowledge=knowledge
+        settings,
+        factory,
+        audit=audit_sink,
+        knowledge=knowledge,
+        proposals=proposals,
+        gateway=gateway,
     )
     mcp_app = mcp_server.streamable_http_app(
         stateless_http=True,
@@ -61,8 +81,9 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await audit_sink.start()  # applies the schema; fails start-up if the DB is down
-        if knowledge_store is not None:
-            await knowledge_store.start()
+        for store in (knowledge_store, proposal_store):
+            if store is not None:
+                await store.start()
         if embedder is not None:
             await embedder.embed(["warm up"])  # load the model now, not on the first question
         try:
@@ -71,8 +92,9 @@ def create_app(
         finally:
             await provider.aclose()
             await audit_sink.close()
-            if knowledge_store is not None:
-                await knowledge_store.close()
+            for store in (knowledge_store, proposal_store):
+                if store is not None:
+                    await store.close()
 
     app = FastAPI(title="Odoo Agent Gateway", version=__version__, lifespan=lifespan)
 
@@ -80,5 +102,6 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
-    app.mount("/", mcp_app)  # serves /mcp
+    app.include_router(build_approval_router(gateway, proposals, settings.allowed_hosts))
+    app.mount("/", mcp_app)  # serves /mcp; mounted last so it does not shadow other routes
     return app

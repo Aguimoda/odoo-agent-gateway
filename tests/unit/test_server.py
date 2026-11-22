@@ -21,6 +21,8 @@ EXPECTED_TOOLS = {
     "read_record",
     "summarize_data",
     "search_knowledge",
+    "propose_change",
+    "list_my_proposals",
 }
 
 
@@ -72,7 +74,7 @@ def ana_headers(key: str = ANA_KEY) -> dict:
 
 
 @pytest.mark.anyio
-async def test_exposes_exactly_the_seven_read_tools_with_descriptions():
+async def test_exposes_exactly_the_nine_tools_with_descriptions():
     server = build_mcp_server(SETTINGS, FakeOdoo().client, audit=MemoryAuditSink())
 
     async with Client(server) as client:
@@ -283,3 +285,16 @@ def test_search_knowledge_without_an_index_reports_it_is_unavailable():
 
     assert result["isError"] is True
     assert "knowledge_unavailable" in result["content"][0]["text"]
+
+
+def test_no_mcp_tool_can_approve_or_reject():
+    """ADR 0012: deciding is never available to the agent."""
+    import anyio
+
+    async def names():
+        server = build_mcp_server(SETTINGS, FakeOdoo().client, audit=MemoryAuditSink())
+        async with Client(server) as client:
+            return [tool.name for tool in (await client.list_tools()).tools]
+
+    tools = anyio.run(names)
+    assert not [name for name in tools if "approve" in name or "reject" in name]

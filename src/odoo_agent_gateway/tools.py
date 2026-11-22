@@ -85,6 +85,11 @@ class ReadTools:
         self._limits = limits or Limits()
         self._knowledge = knowledge  # a KnowledgeSearch, or None when no index is configured
 
+    @property
+    def session(self) -> Session:
+        """The caller's authenticated Odoo session, for services built on top of the tools."""
+        return self._session
+
     async def search_knowledge(self, query: Any, limit: Any = None) -> dict[str, Any]:
         if self._knowledge is None:
             from odoo_agent_gateway.knowledge_store import KnowledgeUnavailable
