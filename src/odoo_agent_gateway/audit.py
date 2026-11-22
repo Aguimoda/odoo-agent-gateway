@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from importlib import resources
 from typing import Any, Protocol
 
 import asyncpg
 
+from odoo_agent_gateway.migrations import apply_migrations
 from odoo_agent_gateway.odoo import OdooError
 
 ARGUMENTS_LIMIT = 4000
@@ -77,13 +77,12 @@ class PostgresAuditSink:
         return "PostgresAuditSink()"  # the DSN contains a password
 
     async def start(self) -> None:
-        schema = resources.files("odoo_agent_gateway.migrations").joinpath("001_audit_log.sql")
         try:
             self._pool = await asyncpg.create_pool(
                 self._dsn, min_size=1, max_size=5, timeout=self._timeout
             )
             async with self._pool.acquire() as connection:
-                await connection.execute(schema.read_text(encoding="utf-8"))
+                await apply_migrations(connection)
         except (OSError, asyncpg.PostgresError, TimeoutError) as error:
             raise AuditUnavailable("The audit database could not be reached.") from error
 

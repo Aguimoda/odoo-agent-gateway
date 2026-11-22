@@ -21,6 +21,7 @@ htmlcov/
 
 # Local data produced by Docker volumes or tools
 data/
+.cache/
 logs/
 
 # Editors and OS
