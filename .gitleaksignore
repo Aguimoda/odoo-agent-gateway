@@ -3,3 +3,6 @@
 
 # Made-up API key used as a fixture in the Odoo client unit tests; it never worked anywhere.
 eee877c5dd6e20272466484f68229b1b1c9e623b:tests/unit/test_odoo_client.py:generic-api-key:19
+
+# Made-up API key in the tracing tests; the test checks that keys never reach span attributes.
+e1aaad49160f3b56f37d3223ad968ef6dc8c0f12:tests/unit/test_tracing.py:generic-api-key:15
