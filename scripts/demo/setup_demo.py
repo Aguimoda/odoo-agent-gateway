@@ -13,11 +13,20 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
 DB = "demo"
 DB_ARGS = '--db_host "$HOST" --db_user "$USER" --db_password "$PASSWORD"'
 OUTPUT = ROOT / ".env.demo-keys"
+
+
+def _read_env(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    pairs = (line.split("=", 1) for line in lines if "=" in line and not line.startswith("#"))
+    return {key.strip(): value.strip() for key, value in pairs}
 
 
 def odoo(command: str, stdin: str | None = None) -> str:
@@ -53,6 +62,14 @@ def main() -> None:
         "# Administrator of the demo database (login: admin). Local use only.",
         f"DEMO_ADMIN_PASSWORD={result['admin_password']}",
     ]
+    compose_env = _read_env(ROOT / ".env")
+    if compose_env.get("GATEWAY_DB_PASSWORD"):
+        user = quote(compose_env.get("GATEWAY_DB_USER", "gateway"), safe="")
+        password = quote(compose_env["GATEWAY_DB_PASSWORD"], safe="")
+        port = compose_env.get("GATEWAY_DB_PORT", "5433")
+        name = compose_env.get("GATEWAY_DB_NAME", "gateway")
+        lines.append("# The gateway's own database (audit log), from .env.")
+        lines.append(f"GATEWAY_DATABASE_URL=postgresql://{user}:{password}@127.0.0.1:{port}/{name}")
     for login in ("ana", "luis"):
         prefix = f"DEMO_{login.upper()}"
         lines.append(f"{prefix}_LOGIN={login}")
