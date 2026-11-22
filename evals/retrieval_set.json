@@ -1,0 +1,29 @@
+{
+  "description": "Labelled retrieval questions for the demo handbook (scripts/demo/knowledge). expected_path is null for questions the handbook cannot answer: the right behaviour there is to return nothing.",
+  "cases": [
+    {"id": "returns-who-es", "lang": "es", "question": "¿Se puede devolver un producto que ya se ha usado?", "expected_path": "returns.md"},
+    {"id": "returns-window-en", "lang": "en", "question": "How many days does a customer have to return an item?", "expected_path": "returns.md"},
+    {"id": "returns-register-es", "lang": "es", "question": "¿Cómo registro una devolución en Odoo?", "expected_path": "returns.md"},
+    {"id": "returns-refund-en", "lang": "en", "question": "When does the customer get the refund?", "expected_path": "returns.md"},
+    {"id": "returns-custom-es", "lang": "es", "question": "¿Aceptamos devoluciones de muebles hechos a medida?", "expected_path": "returns.md"},
+    {"id": "shipping-canary-es", "lang": "es", "question": "¿Cuánto tarda un envío a Canarias?", "expected_path": "shipping.md"},
+    {"id": "shipping-mainland-en", "lang": "en", "question": "How long does delivery take within mainland Spain?", "expected_path": "shipping.md"},
+    {"id": "shipping-free-en", "lang": "en", "question": "When is shipping free?", "expected_path": "shipping.md"},
+    {"id": "shipping-floor-es", "lang": "es", "question": "¿Cuánto se cobra por subir muebles a un piso sin ascensor?", "expected_path": "shipping.md"},
+    {"id": "shipping-damaged-es", "lang": "es", "question": "El paquete ha llegado roto, ¿qué tiene que hacer el cliente?", "expected_path": "shipping.md"},
+    {"id": "discounts-max-es", "lang": "es", "question": "¿Cuánto descuento puede dar un comercial sin pedir permiso?", "expected_path": "discounts.md"},
+    {"id": "discounts-approval-en", "lang": "en", "question": "Who has to approve a 15 percent discount?", "expected_path": "discounts.md"},
+    {"id": "discounts-promise-en", "lang": "en", "question": "Can I promise a discount to a customer by email before it is approved?", "expected_path": "discounts.md"},
+    {"id": "payments-terms-es", "lang": "es", "question": "¿En qué plazo hay que pagar las facturas?", "expected_path": "payments.md"},
+    {"id": "payments-overdue-en", "lang": "en", "question": "What happens when an invoice is 45 days overdue?", "expected_path": "payments.md"},
+    {"id": "payments-cash-es", "lang": "es", "question": "¿Un cliente puede pagar en efectivo?", "expected_path": "payments.md"},
+    {"id": "payments-first-order-en", "lang": "en", "question": "How does a new customer pay for their first order?", "expected_path": "payments.md"},
+    {"id": "payments-reminder-es", "lang": "es", "question": "¿Cuándo se envía un recordatorio de pago?", "expected_path": "payments.md"},
+    {"id": "none-wifi-es", "lang": "es", "question": "¿Cuál es la contraseña del wifi de la oficina?", "expected_path": null},
+    {"id": "none-holidays-en", "lang": "en", "question": "How do I request a day of holiday?", "expected_path": null},
+    {"id": "none-ceo-en", "lang": "en", "question": "Who is the chief executive of the company?", "expected_path": null},
+    {"id": "none-parking-es", "lang": "es", "question": "¿Hay aparcamiento para empleados?", "expected_path": null},
+    {"id": "none-cars-en", "lang": "en", "question": "Do we sell electric cars?", "expected_path": null},
+    {"id": "none-pension-es", "lang": "es", "question": "¿La empresa tiene plan de pensiones?", "expected_path": null}
+  ]
+}
