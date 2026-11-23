@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -259,16 +260,56 @@ class HttpGateway:
         return bool(result.get("isError")), result["content"][0]["text"]
 
 
-async def _run(scenarios: list[Scenario], out: Path) -> dict[str, Any]:
-    env = os.environ
+# Presets for running by hand. They hold no keys: the key comes from the environment or is
+# typed at a hidden prompt, and is never written anywhere.
+PROVIDERS: dict[str, dict[str, str]] = {
+    "groq": {"base_url": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b"},
+    "cerebras": {"base_url": "https://api.cerebras.ai/v1", "model": "gpt-oss-120b"},
+}
+
+
+def load_demo_env(env: dict[str, str], keys_file: Path) -> dict[str, str]:
+    """Add the demo users' credentials from .env.demo-keys; values already set win."""
+    merged = dict(env)
+    if Path(keys_file).exists():
+        for line in Path(keys_file).read_text(encoding="utf-8").splitlines():
+            if line and not line.startswith("#") and "=" in line:
+                name, value = line.split("=", 1)
+                merged.setdefault(name.strip(), value.strip())
+    return merged
+
+
+def resolve_settings(
+    env: dict[str, str], provider: str | None, ask_key: Callable[[], str]
+) -> dict[str, str]:
+    preset = PROVIDERS.get(provider or "", {})
+    settings = {
+        "AGENT_EVAL_BASE_URL": env.get("AGENT_EVAL_BASE_URL") or preset.get("base_url", ""),
+        "AGENT_EVAL_MODEL": env.get("AGENT_EVAL_MODEL") or preset.get("model", ""),
+    }
+    missing = [name for name, value in settings.items() if not value]
+    if missing:
+        raise SystemExit(
+            f"Missing {', '.join(missing)}: use --provider groq or --provider cerebras, "
+            "or set them in the environment."
+        )
+    key = env.get("AGENT_EVAL_API_KEY") or ask_key()
+    if not key or not key.strip():
+        raise SystemExit("No API key given.")
+    settings["AGENT_EVAL_API_KEY"] = key.strip()
+    return settings
+
+
+async def _run(
+    scenarios: list[Scenario], out: Path, settings: dict[str, str], env: dict[str, str]
+) -> dict[str, Any]:
     credentials = {
         user: (env[f"DEMO_{user.upper()}_LOGIN"], env[f"DEMO_{user.upper()}_API_KEY"])
         for user in {s.user for s in scenarios}
     }
+    model, base_url = settings["AGENT_EVAL_MODEL"], settings["AGENT_EVAL_BASE_URL"]
     async with httpx2.AsyncClient() as http:
-        llm = OpenAICompatibleLLM(
-            env["AGENT_EVAL_BASE_URL"], env["AGENT_EVAL_MODEL"], env["AGENT_EVAL_API_KEY"], http
-        )
+        llm = OpenAICompatibleLLM(base_url, model, settings["AGENT_EVAL_API_KEY"], http)
         gateway = HttpGateway(
             env.get("AGENT_EVAL_GATEWAY_URL", "http://127.0.0.1:8000"), credentials, http
         )
@@ -279,8 +320,8 @@ async def _run(scenarios: list[Scenario], out: Path) -> dict[str, Any]:
             except ProviderError as error:
                 runs.append(AgentRun(scenario, stopped="error", error=str(error)))
             print(f"  {scenario.id}: done")
-    summary = summarize(runs, env["AGENT_EVAL_MODEL"], urlparse(env["AGENT_EVAL_BASE_URL"]).netloc)
-    slug = re.sub(r"[^a-z0-9]+", "-", env["AGENT_EVAL_MODEL"].lower()).strip("-")
+    summary = summarize(runs, model, urlparse(base_url).netloc)
+    slug = re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")
     out.mkdir(parents=True, exist_ok=True)
     (out / f"agent-{slug}.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
@@ -290,20 +331,23 @@ async def _run(scenarios: list[Scenario], out: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> None:
+    import getpass
+
     parser = argparse.ArgumentParser(description="Evaluate a real agent using the gateway.")
+    parser.add_argument("--provider", choices=sorted(PROVIDERS), help="fill URL and model")
     parser.add_argument("--scenarios", type=Path, default=Path("evals/agent_scenarios.json"))
     parser.add_argument("--out", type=Path, default=Path("evals/results"))
+    parser.add_argument("--demo-env", type=Path, default=Path(".env.demo-keys"))
     parser.add_argument("--only", help="run a single scenario by id")
     args = parser.parse_args(argv)
-    missing = [
-        n
-        for n in ("AGENT_EVAL_BASE_URL", "AGENT_EVAL_MODEL", "AGENT_EVAL_API_KEY")
-        if not os.environ.get(n)
-    ]
-    if missing:
-        raise SystemExit(f"Missing environment variables: {', '.join(missing)}")
+
+    env = load_demo_env(dict(os.environ), args.demo_env)
+    settings = resolve_settings(
+        env, args.provider, ask_key=lambda: getpass.getpass("Provider API key (not shown): ")
+    )
     scenarios = [s for s in load_scenarios(args.scenarios) if args.only in (None, s.id)]
-    summary = anyio.run(_run, scenarios, args.out)
+    print(f"Running {len(scenarios)} scenarios with {settings['AGENT_EVAL_MODEL']}...")
+    summary = anyio.run(_run, scenarios, args.out, settings, env)
     print(render_markdown(summary))
 
 

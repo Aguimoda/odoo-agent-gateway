@@ -238,3 +238,54 @@ async def test_rate_limits_are_retried_and_other_errors_never_echo_the_key():
     with pytest.raises(ProviderError) as error:
         await failing.complete([], [])
     assert KEY not in str(error.value)
+
+
+# --- running it by hand: provider presets, demo credentials, a hidden key prompt -----------
+
+
+def test_provider_presets_fill_the_url_and_model_but_never_a_key():
+    from odoo_agent_gateway.evals.agent import PROVIDERS, resolve_settings
+
+    settings = resolve_settings({}, provider="groq", ask_key=lambda: "typed-key")
+
+    assert settings["AGENT_EVAL_BASE_URL"] == PROVIDERS["groq"]["base_url"]
+    assert settings["AGENT_EVAL_MODEL"] == PROVIDERS["groq"]["model"]
+    assert settings["AGENT_EVAL_API_KEY"] == "typed-key"
+    assert all("key" not in preset for preset in PROVIDERS.values())
+
+
+def test_explicit_environment_values_win_over_presets():
+    from odoo_agent_gateway.evals.agent import resolve_settings
+
+    env = {"AGENT_EVAL_MODEL": "my-model", "AGENT_EVAL_API_KEY": "from-env"}
+
+    settings = resolve_settings(env, provider="cerebras", ask_key=lambda: pytest.fail("asked"))
+
+    assert settings["AGENT_EVAL_MODEL"] == "my-model"
+    assert settings["AGENT_EVAL_API_KEY"] == "from-env"
+
+
+def test_without_a_provider_or_url_it_refuses():
+    from odoo_agent_gateway.evals.agent import resolve_settings
+
+    with pytest.raises(SystemExit, match="AGENT_EVAL_BASE_URL"):
+        resolve_settings({}, provider=None, ask_key=lambda: "k")
+
+
+def test_an_empty_typed_key_is_refused():
+    from odoo_agent_gateway.evals.agent import resolve_settings
+
+    with pytest.raises(SystemExit, match="key"):
+        resolve_settings({}, provider="groq", ask_key=lambda: "  ")
+
+
+def test_demo_credentials_are_loaded_from_the_keys_file(tmp_path):
+    from odoo_agent_gateway.evals.agent import load_demo_env
+
+    keys = tmp_path / ".env.demo-keys"
+    keys.write_text("# comment\nDEMO_ANA_LOGIN=ana\nDEMO_ANA_API_KEY=abc\n", encoding="utf-8")
+
+    env = load_demo_env({"DEMO_ANA_LOGIN": "already-set"}, keys)
+
+    assert env["DEMO_ANA_LOGIN"] == "already-set"  # the environment wins
+    assert env["DEMO_ANA_API_KEY"] == "abc"
