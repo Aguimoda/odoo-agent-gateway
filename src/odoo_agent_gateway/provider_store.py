@@ -30,6 +30,7 @@ class Provider:
     enabled: bool
     requests_per_minute: int | None
     requests_per_day: int | None
+    tokens_per_minute: int | None
     auth_failed_at: datetime | None
     exhausted_until: datetime | None
     last_error_kind: str | None
@@ -76,7 +77,8 @@ class AgentSettings:
 
 _PROVIDER_COLUMNS = (
     "id, name, base_url, api_key_encrypted, key_updated_at, enabled, requests_per_minute, "
-    "requests_per_day, auth_failed_at, exhausted_until, last_error_kind, last_error_at, "
+    "requests_per_day, tokens_per_minute, auth_failed_at, exhausted_until, last_error_kind, "
+    "last_error_at, "
     "last_ok_at, created_at, updated_at"
 )
 _MODEL_COLUMNS = "id, provider_id, name, label, enabled, is_default, unavailable_at, created_at"
@@ -89,6 +91,7 @@ _PROVIDER_WRITABLE = {
     "enabled",
     "requests_per_minute",
     "requests_per_day",
+    "tokens_per_minute",
     "auth_failed_at",
     "exhausted_until",
     "last_error_kind",
@@ -257,10 +260,11 @@ class PostgresProviderStore:
         prompt_tokens: int | None,
         completion_tokens: int | None,
         latency_ms: int,
+        error_code: str | None = None,
     ) -> None:
         await self._ready().execute(
             "insert into llm_usage (provider, model, login, outcome, prompt_tokens, "
-            "completion_tokens, latency_ms) values ($1, $2, $3, $4, $5, $6, $7)",
+            "completion_tokens, latency_ms, error_code) values ($1, $2, $3, $4, $5, $6, $7, $8)",
             provider,
             model,
             login,
@@ -268,7 +272,18 @@ class PostgresProviderStore:
             prompt_tokens,
             completion_tokens,
             latency_ms,
+            (error_code or "")[:80] or None,
         )
+
+    async def tokens_since(self, provider: str, since: datetime) -> tuple[int, datetime | None]:
+        """Tokens a provider used since a moment, and when the oldest of those calls was."""
+        row = await self._ready().fetchrow(
+            "select coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(completion_tokens, 0)), 0)"
+            " as used, min(at) as oldest from llm_usage where provider = $1 and at >= $2",
+            provider,
+            since,
+        )
+        return int(row["used"]), row["oldest"]
 
     async def calls_since(self, provider: str, since: datetime) -> int:
         return await self._ready().fetchval(

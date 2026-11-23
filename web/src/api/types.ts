@@ -136,6 +136,7 @@ export interface Provider {
   key_updated_at: string | null;
   requests_per_minute: number | null;
   requests_per_day: number | null;
+  tokens_per_minute: number | null;
   status: ProviderStatus | string;
   status_until: string | null;
   last_error: string | null;

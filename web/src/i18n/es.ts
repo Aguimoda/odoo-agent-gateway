@@ -168,6 +168,8 @@ export const es = {
   "providers.keyMissing": "Sin clave",
   "providers.perMinute": "Peticiones por minuto",
   "providers.perDay": "Peticiones por día",
+  "providers.tokensPerMinute": "Tokens por minuto",
+  "providers.tokensPerMinuteHelp": "El límite de tu plan. El asistente espera o avisa antes de pasarse, en lugar de chocar con el proveedor a mitad de una respuesta.",
   "providers.limitHelp": "Opcional: el límite de tu plan, para no chocar con él.",
   "providers.enabled": "Activo",
   "providers.save": "Guardar",

@@ -12,6 +12,7 @@ from odoo_agent_gateway.providers import (
     next_utc_midnight,
     normalize_base_url,
     provider_status,
+    token_wait,
 )
 
 NOW = datetime(2026, 11, 23, 15, 0, tzinfo=UTC)
@@ -61,6 +62,7 @@ def provider(**changes) -> Provider:
         enabled=True,
         requests_per_minute=None,
         requests_per_day=None,
+        tokens_per_minute=None,
         auth_failed_at=None,
         exhausted_until=None,
         last_error_kind=None,
@@ -132,3 +134,22 @@ def test_model_status_follows_its_provider():
 
 def test_next_utc_midnight():
     assert next_utc_midnight(NOW) == datetime(2026, 11, 24, tzinfo=UTC)
+
+
+# Token budget (ADR 0020)
+
+
+@pytest.mark.parametrize(
+    "limit, used, oldest_seconds_ago, estimate, wait",
+    [
+        (None, 99_999, 10, 5_000, 0.0),  # no limit set
+        (8_000, 0, None, 5_000, 0.0),  # nothing used in the last minute
+        (8_000, 2_000, 30, 5_000, 0.0),  # fits
+        (8_000, 6_000, 30, 3_000, 30.0),  # wait until the oldest call is a minute old
+        (8_000, 6_000, 59.5, 3_000, 1.0),  # never less than a second
+        (8_000, 3_000, 30, 20_000, 0.0),  # larger than the limit itself: let it through
+    ],
+)
+def test_token_wait(limit, used, oldest_seconds_ago, estimate, wait):
+    oldest = None if oldest_seconds_ago is None else NOW - timedelta(seconds=oldest_seconds_ago)
+    assert token_wait(limit, used, oldest, estimate, NOW) == pytest.approx(wait)

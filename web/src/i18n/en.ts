@@ -169,6 +169,8 @@ export const en: Messages = {
   "providers.keyMissing": "No key",
   "providers.perMinute": "Requests per minute",
   "providers.perDay": "Requests per day",
+  "providers.tokensPerMinute": "Tokens per minute",
+  "providers.tokensPerMinuteHelp": "Your plan's limit. The assistant waits or warns before going over it, instead of hitting the provider halfway through an answer.",
   "providers.limitHelp": "Optional: your plan's limit, so it is never hit.",
   "providers.enabled": "Enabled",
   "providers.save": "Save",

@@ -241,6 +241,8 @@ class ChatClient:
             "messages": messages,
             "temperature": 0,
             "stream": True,
+            # Ask for token counts in the stream: Gemini and others omit them otherwise.
+            "stream_options": {"include_usage": True},
         }
         if tools:
             body["tools"] = tools

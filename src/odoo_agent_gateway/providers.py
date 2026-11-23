@@ -14,7 +14,15 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from odoo_agent_gateway.llm import ChatClient, CircuitBreaker, ProviderFailure, Target
+import anyio
+
+from odoo_agent_gateway.llm import (
+    MAX_WAITED_RETRY_AFTER,
+    ChatClient,
+    CircuitBreaker,
+    ProviderFailure,
+    Target,
+)
 from odoo_agent_gateway.odoo import InvalidRequest, RecordNotFound
 from odoo_agent_gateway.provider_store import (
     Model,
@@ -102,6 +110,21 @@ def model_status(model: Model, provider: Provider, now: datetime, breaker: Circu
     return provider_status(provider, now, breaker)[0]
 
 
+def token_wait(
+    limit: int | None, used: int, oldest: datetime | None, estimate: int, now: datetime
+) -> float:
+    """Seconds to wait before a call of `estimate` tokens fits the per-minute limit (ADR 0020).
+
+    0 means call now. A call larger than the limit itself is let through, so a low limit
+    never blocks a provider for good.
+    """
+    if not limit or used <= 0 or oldest is None or estimate >= limit:
+        return 0.0
+    if used + estimate <= limit:
+        return 0.0
+    return max((oldest + timedelta(seconds=60) - now).total_seconds(), 1.0)
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
@@ -115,7 +138,9 @@ class ProviderRegistry:
         local_hosts: frozenset[str] = frozenset(),
         breaker: CircuitBreaker | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], Any] = anyio.sleep,
     ) -> None:
+        self._sleep = sleep
         self.store = store
         self._box = box
         self._chat = chat
@@ -138,6 +163,7 @@ class ProviderRegistry:
             "key_updated_at": _iso(provider.key_updated_at),
             "requests_per_minute": provider.requests_per_minute,
             "requests_per_day": provider.requests_per_day,
+            "tokens_per_minute": provider.tokens_per_minute,
             "status": status,
             "status_until": _iso(until),
             "last_error": provider.last_error_kind,
@@ -186,7 +212,7 @@ class ProviderRegistry:
             raise InvalidRequest("Name: 1 to 40 lowercase letters, digits, - or _.")
         base_url = normalize_base_url(data.get("base_url", ""), self._local_hosts)
         values: dict[str, Any] = {"base_url": base_url, "enabled": data.get("enabled", True)}
-        for limit in ("requests_per_minute", "requests_per_day"):
+        for limit in ("requests_per_minute", "requests_per_day", "tokens_per_minute"):
             values[limit] = data.get(limit)
         if api_key := (data.get("api_key") or "").strip():
             values["api_key_encrypted"] = self._box.encrypt(api_key, base_url)
@@ -211,7 +237,7 @@ class ProviderRegistry:
             values["api_key_encrypted"] = self._box.encrypt(api_key, base_url)
             values["key_updated_at"] = self._clock()
             values["auth_failed_at"] = None  # a new key gets a new chance
-        for name in ("enabled", "requests_per_minute", "requests_per_day"):
+        for name in ("enabled", "requests_per_minute", "requests_per_day", "tokens_per_minute"):
             if name in data:
                 values[name] = data[name]
         await self.store.update_provider(provider_id, values)
@@ -323,9 +349,11 @@ class ProviderRegistry:
             api_key=self._decrypt(provider),
         )
 
-    async def acquire(self, target: Target) -> None:
+    async def acquire(self, target: Target, estimate: int = 0) -> None:
         """Enforce the provider's known limits before calling it, and the circuit breaker."""
         provider = await self._provider(target.provider_id)
+        if provider.tokens_per_minute and estimate:
+            await self._token_budget(provider, estimate)
         if not self.breaker.allow(provider.name):
             raise ProviderFailure("provider_unavailable", self.breaker.open_for(provider.name))
         if provider.requests_per_day:
@@ -340,6 +368,20 @@ class ProviderRegistry:
             if not limiter.allow(provider.name):
                 raise ProviderFailure("rate_limited", retry_after=60.0)
 
+    async def _token_budget(self, provider: Provider, estimate: int) -> None:
+        waited = False
+        while True:
+            now = self._clock()
+            since = now - timedelta(seconds=60)
+            used, oldest = await self.store.tokens_since(provider.name, since)
+            wait = token_wait(provider.tokens_per_minute, used, oldest, estimate, now)
+            if not wait:
+                return
+            if waited or wait > MAX_WAITED_RETRY_AFTER:
+                raise ProviderFailure("rate_limited", retry_after=wait, code="token_budget")
+            waited = True
+            await self._sleep(wait)
+
     async def record_success(
         self,
         target: Target,
@@ -347,6 +389,7 @@ class ProviderRegistry:
         latency_ms: int,
         tokens: tuple[int | None, int | None],
     ) -> None:
+        """Tokens are what the provider reported, or the caller's estimate when it did not."""
         self.breaker.success(target.provider)
         await self.store.record_health(target.provider_id, {"last_ok_at": self._clock()})
         await self.store.record_usage(
@@ -373,6 +416,7 @@ class ProviderRegistry:
             prompt_tokens=None,
             completion_tokens=None,
             latency_ms=latency_ms,
+            error_code=failure.code,
         )
 
     async def record_failure(

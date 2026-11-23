@@ -41,6 +41,7 @@ interface ProviderForm {
   api_key: string;
   requests_per_minute: string;
   requests_per_day: string;
+  tokens_per_minute: string;
   enabled: boolean;
 }
 
@@ -50,6 +51,7 @@ const emptyForm: ProviderForm = {
   api_key: "",
   requests_per_minute: "",
   requests_per_day: "",
+  tokens_per_minute: "",
   enabled: true,
 };
 
@@ -76,6 +78,7 @@ function ProviderEditor({
           api_key: "",
           requests_per_minute: provider.requests_per_minute?.toString() ?? "",
           requests_per_day: provider.requests_per_day?.toString() ?? "",
+          tokens_per_minute: provider.tokens_per_minute?.toString() ?? "",
           enabled: provider.enabled,
         }
       : emptyForm,
@@ -98,6 +101,7 @@ function ProviderEditor({
           enabled: form.enabled,
           requests_per_minute: limit(form.requests_per_minute),
           requests_per_day: limit(form.requests_per_day),
+          tokens_per_minute: limit(form.tokens_per_minute),
         };
         if (form.base_url.trim() !== provider.base_url) body.base_url = form.base_url.trim();
         if (form.api_key) body.api_key = form.api_key;
@@ -110,6 +114,7 @@ function ProviderEditor({
           enabled: form.enabled,
           requests_per_minute: limit(form.requests_per_minute),
           requests_per_day: limit(form.requests_per_day),
+          tokens_per_minute: limit(form.tokens_per_minute),
         });
       }
       onSaved(saved, PRESETS.find((p) => p.name === preset)?.model);
@@ -252,6 +257,22 @@ function ProviderEditor({
               {t("providers.perDay")} <span className="optional">· {t("common.optional")}</span>
             </label>
             <input id="provider-rpd" className="input tabular" inputMode="numeric" value={form.requests_per_day} onChange={(e) => set("requests_per_day", e.target.value)} />
+          </div>
+          <div className="field span-2">
+            <label className="label" htmlFor="provider-tpm">
+              {t("providers.tokensPerMinute")} <span className="optional">· {t("common.optional")}</span>
+            </label>
+            <input
+              id="provider-tpm"
+              className="input tabular"
+              inputMode="numeric"
+              value={form.tokens_per_minute}
+              onChange={(e) => set("tokens_per_minute", e.target.value)}
+              aria-describedby="provider-tpm-help"
+            />
+            <p id="provider-tpm-help" className="help">
+              {t("providers.tokensPerMinuteHelp")}
+            </p>
           </div>
           <label className="check span-2">
             <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} />

@@ -30,6 +30,7 @@ class ProviderIn(BaseModel):
     enabled: bool = True
     requests_per_minute: int | None = Field(default=None, gt=0)
     requests_per_day: int | None = Field(default=None, gt=0)
+    tokens_per_minute: int | None = Field(default=None, gt=0)
 
 
 class ProviderPatch(BaseModel):
@@ -38,6 +39,7 @@ class ProviderPatch(BaseModel):
     enabled: bool | None = None
     requests_per_minute: int | None = Field(default=None, gt=0)
     requests_per_day: int | None = Field(default=None, gt=0)
+    tokens_per_minute: int | None = Field(default=None, gt=0)
 
 
 class ModelIn(BaseModel):

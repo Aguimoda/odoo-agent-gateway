@@ -510,7 +510,8 @@ class _Turn:
             self.streamed += text
             await on_token(text)
 
-        await registry.acquire(target)
+        estimate = (len(json.dumps(messages)) + len(json.dumps(tools))) // 4
+        await registry.acquire(target, estimate)
         started = time.perf_counter()
         try:
             reply = await self.service._chat.complete(target, messages, tools, token)
@@ -519,7 +520,13 @@ class _Turn:
             await registry.record_call_failure(target, login, elapsed, failure)
             raise
         elapsed = round((time.perf_counter() - started) * 1000)
-        tokens = (reply.prompt_tokens, reply.completion_tokens)
+        # When the provider does not report tokens, the estimate is recorded (ADR 0020).
+        tokens = (
+            reply.prompt_tokens if reply.prompt_tokens is not None else estimate,
+            reply.completion_tokens
+            if reply.completion_tokens is not None
+            else len(reply.content) // 4 + 20 * len(reply.tool_calls),
+        )
         await registry.record_success(target, login, elapsed, tokens)
         return reply
 
