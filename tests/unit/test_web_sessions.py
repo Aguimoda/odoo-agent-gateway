@@ -51,6 +51,9 @@ class MemoryStorage:
     async def delete(self, id_hash) -> None:
         self.rows.pop(id_hash, None)
 
+    async def take(self, id_hash):
+        return self.rows.pop(id_hash, None)
+
     async def purge(self, now, idle_before) -> int:
         old = [
             k for k, r in self.rows.items() if r.expires_at <= now or r.last_seen_at <= idle_before
@@ -142,6 +145,50 @@ async def test_deleting_a_session_ends_it():
     token = await web.create(7, "ana", KEY)
     await web.delete(token)
     assert await web.resolve(token) is None
+
+
+# -- one-time tickets from Odoo (ADR 0021) ------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_a_ticket_becomes_a_session_once():
+    storage = MemoryStorage()
+    web = sessions(storage=storage)
+    ticket = await web.create_ticket(7, "ana", KEY)
+    (row,) = storage.rows.values()
+    assert row.ticket and KEY.encode() not in row.key_encrypted
+
+    token = await web.redeem(ticket)
+    credentials = await web.resolve(token)
+    assert (credentials.login, credentials.uid, credentials.api_key) == ("ana", 7, KEY)
+    assert await web.redeem(ticket) is None  # single use
+
+
+@pytest.mark.anyio
+async def test_a_ticket_expires_after_a_minute():
+    clock = Clock()
+    web = sessions(clock)
+    ticket = await web.create_ticket(7, "ana", KEY)
+    clock.now += timedelta(seconds=61)
+    assert await web.redeem(ticket) is None
+
+
+@pytest.mark.anyio
+async def test_a_ticket_is_not_a_session_and_a_session_is_not_a_ticket():
+    web = sessions()
+    ticket = await web.create_ticket(7, "ana", KEY)
+    assert await web.resolve(ticket) is None
+    token = await web.create(7, "ana", KEY)
+    assert await web.redeem(token) is None
+    assert await web.resolve(token) is not None  # a failed redeem does not end the session
+
+
+@pytest.mark.anyio
+async def test_bad_tickets_are_refused():
+    web = sessions()
+    assert await web.redeem("") is None
+    assert await web.redeem("x" * 500) is None
+    assert await web.redeem("not-a-ticket") is None
 
 
 def test_cookie_parsing_and_origin_rules():
@@ -302,3 +349,54 @@ def test_sign_in_from_another_site_is_refused():
     )
     assert response.status_code == 403
     assert web.storage.rows == {}
+
+
+def test_odoo_gets_a_ticket_server_to_server_and_never_a_cookie():
+    audit = MemoryAuditSink()
+    client, web = session_api(audit)
+    response = client.post("/session/ticket", json={"login": "ana", "api_key": KEY})
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"ticket", "expires_in"} and body["expires_in"] == 60
+    assert "set-cookie" not in response.headers
+    assert KEY not in response.text
+    assert [(e.tool, e.login, e.outcome, e.arguments) for e in audit.events] == [
+        ("session.ticket", "ana", "ok", {})
+    ]
+
+
+def test_a_wrong_key_gets_no_ticket():
+    client, web = session_api(MemoryAuditSink())
+    response = client.post("/session/ticket", json={"login": "ana", "api_key": "wrong"})
+    assert response.status_code == 401
+    assert web.storage.rows == {}
+
+
+def test_the_browser_redeems_the_ticket_once_for_a_strict_cookie():
+    audit = MemoryAuditSink()
+    client, web = session_api(audit)
+    ticket = client.post("/session/ticket", json={"login": "ana", "api_key": KEY}).json()["ticket"]
+    own = {"origin": "http://127.0.0.1:8000"}
+
+    redeemed = client.post("/session/redeem", json={"ticket": ticket}, headers=own)
+    assert redeemed.status_code == 200
+    assert redeemed.json()["login"] == "ana"
+    cookie = redeemed.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie
+    assert KEY not in redeemed.text
+    assert client.get("/session").json()["name"] == "Ana García"
+
+    client.cookies.clear()
+    again = client.post("/session/redeem", json={"ticket": ticket}, headers=own)
+    assert again.status_code == 401 and "set-cookie" not in again.headers
+    assert ticket not in json.dumps([e.arguments for e in audit.events])
+
+
+def test_a_ticket_cannot_be_redeemed_from_another_site():
+    client, web = session_api(MemoryAuditSink())
+    ticket = client.post("/session/ticket", json={"login": "ana", "api_key": KEY}).json()["ticket"]
+    response = client.post(
+        "/session/redeem", json={"ticket": ticket}, headers={"origin": "https://evil.example"}
+    )
+    assert response.status_code == 403
+    assert "set-cookie" not in response.headers

@@ -170,3 +170,41 @@ def test_the_admin_panel_is_decided_by_odoo(browser, demo):
     assert browser.get("/admin/providers").status_code == 200
     settings = browser.get("/admin/settings").json()
     assert "search_knowledge" in settings["tools"] and "propose_change" in settings["tools"]
+
+
+# One-time tickets from the Odoo module (ADR 0021)
+
+
+def test_odoo_hands_over_a_key_and_the_browser_redeems_a_ticket_once(browser, demo):
+    """Scenarios: la clave nunca llega al navegador; el vale solo sirve una vez."""
+    key = demo["DEMO_ANA_API_KEY"]
+    handed = browser.post(
+        "/session/ticket", json={"login": demo["DEMO_ANA_LOGIN"], "api_key": key}
+    )  # server to server: no Origin, no cookie
+    assert handed.status_code == 200, handed.text
+    ticket = handed.json()["ticket"]
+    assert "set-cookie" not in handed.headers and key not in handed.text
+    (row,) = db(
+        demo, "select ticket, key_encrypted from web_sessions where id_hash = $1", hash_id(ticket)
+    )
+    assert row["ticket"] is True and key.encode() not in bytes(row["key_encrypted"])
+
+    redeemed = browser.post("/session/redeem", json={"ticket": ticket}, headers=SAME_SITE)
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["login"] == demo["DEMO_ANA_LOGIN"]
+    assert browser.get("/agent/conversations").status_code == 200
+    assert not db(demo, "select 1 from web_sessions where id_hash = $1", hash_id(ticket))
+
+    browser.cookies.clear()
+    again = browser.post("/session/redeem", json={"ticket": ticket}, headers=SAME_SITE)
+    assert again.status_code == 401
+    assert not db(demo, "select 1 from audit_log where arguments::text like $1", f"%{ticket[:16]}%")
+
+
+def test_a_ticket_is_never_a_session_cookie(browser, demo):
+    ticket = browser.post(
+        "/session/ticket",
+        json={"login": demo["DEMO_ANA_LOGIN"], "api_key": demo["DEMO_ANA_API_KEY"]},
+    ).json()["ticket"]
+    browser.cookies.set(COOKIE_NAME, ticket)
+    assert browser.get("/agent/conversations").status_code == 401

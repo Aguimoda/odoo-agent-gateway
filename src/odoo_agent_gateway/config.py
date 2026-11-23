@@ -32,6 +32,7 @@ class Settings:
     session_hours: int = 12
     cookie_secure: bool | None = None  # None: Secure when the request came over https
     web_dir: str | None = None  # built web app (ADR 0019); default: the package's web_dist
+    embed_origins: tuple[str, ...] = ()  # Odoo origins that may frame the app (ADR 0021)
 
     def __repr__(self) -> str:
         # The database URL contains a password and the secret keys are secret: never print.
@@ -77,6 +78,8 @@ class Settings:
             values["cookie_secure"] = _flag(secure, "GATEWAY_COOKIE_SECURE")
         if web_dir := environ.get("GATEWAY_WEB_DIR"):
             values["web_dir"] = web_dir
+        if embed := _split(environ.get("GATEWAY_EMBED_ORIGINS")):
+            values["embed_origins"] = tuple(origin.rstrip("/") for origin in embed)
         return cls(**values)
 
 

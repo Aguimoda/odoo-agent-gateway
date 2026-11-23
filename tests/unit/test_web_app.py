@@ -60,3 +60,20 @@ def test_paths_outside_the_build_are_not_served(tmp_path):
     api = client(built(tmp_path))
     for path in ("/app/../secret.txt", "/app/%2e%2e/secret.txt", "/app/..%2fsecret.txt"):
         assert "outside" not in api.get(path).text
+
+
+def test_only_the_configured_odoo_may_show_the_app_in_a_panel(tmp_path):
+    """ADR 0021: frame-ancestors lists Odoo; without it, no framing at all."""
+    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
+    app = FastAPI()
+    app.include_router(build_web_router(tmp_path, embed_origins=("http://127.0.0.1:8069",)))
+    response = TestClient(app).get("/app/embed/chat")
+    csp = response.headers["content-security-policy"]
+    assert "frame-ancestors 'self' http://127.0.0.1:8069" in csp
+    assert "x-frame-options" not in response.headers
+
+    plain = FastAPI()
+    plain.include_router(build_web_router(tmp_path))
+    headers = TestClient(plain).get("/app/").headers
+    assert "frame-ancestors 'none'" in headers["content-security-policy"]
+    assert headers["x-frame-options"] == "DENY"

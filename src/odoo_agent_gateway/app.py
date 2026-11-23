@@ -194,7 +194,8 @@ def create_app(
             settings.cookie_secure,
         )
     )
-    app.include_router(build_web_router(Path(settings.web_dir) if settings.web_dir else WEB_DIR))
+    web_dir = Path(settings.web_dir) if settings.web_dir else WEB_DIR
+    app.include_router(build_web_router(web_dir, settings.embed_origins))
     # The session cookie becomes the person's headers for the web APIs only, never /mcp.
     app.add_middleware(
         WebSessionMiddleware, sessions=web_sessions, allowed_origins=settings.allowed_origins

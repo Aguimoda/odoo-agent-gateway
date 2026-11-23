@@ -28,6 +28,7 @@ from odoo_agent_gateway.secretbox import SecretBox, SecretError
 COOKIE_NAME = "oag_session"
 SESSION_PATHS = ("/agent", "/approvals", "/admin", "/session")
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+TICKET_LIFETIME = timedelta(seconds=60)  # ADR 0021
 
 
 class SessionsUnavailable(OdooError):
@@ -43,6 +44,7 @@ class SessionRow:
     created_at: datetime
     last_seen_at: datetime
     expires_at: datetime
+    ticket: bool = False  # a one-time ticket from Odoo, not a session (ADR 0021)
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,7 @@ class SessionStorage(Protocol):
     async def get(self, id_hash: bytes) -> SessionRow | None: ...
     async def touch(self, id_hash: bytes, at: datetime) -> None: ...
     async def delete(self, id_hash: bytes) -> None: ...
+    async def take(self, id_hash: bytes) -> SessionRow | None: ...
     async def purge(self, now: datetime, idle_before: datetime) -> int: ...
 
 
@@ -116,7 +119,7 @@ class WebSessions:
             return None
         id_hash = hash_id(token)
         row = await self.storage.get(id_hash)
-        if row is None:
+        if row is None or row.ticket:
             return None
         now = self._clock()
         if now >= row.expires_at or now - row.last_seen_at >= self.idle:
@@ -133,6 +136,43 @@ class WebSessions:
     async def delete(self, token: str) -> None:
         if token and len(token) <= 200:
             await self.storage.delete(hash_id(token))
+
+    async def create_ticket(self, uid: int, login: str, api_key: str) -> str:
+        """A one-time ticket for the browser, valid for 60 seconds (ADR 0021)."""
+        now = self._clock()
+        await self.storage.purge(now, now - self.idle)
+        ticket = secrets.token_urlsafe(32)
+        id_hash = hash_id(ticket)
+        await self.storage.insert(
+            SessionRow(
+                id_hash=id_hash,
+                odoo_uid=uid,
+                login=login,
+                key_encrypted=self._box.encrypt(api_key, _context(id_hash)),
+                created_at=now,
+                last_seen_at=now,
+                expires_at=now + TICKET_LIFETIME,
+                ticket=True,
+            )
+        )
+        return ticket
+
+    async def redeem(self, ticket: str) -> str | None:
+        """Exchange a ticket for a session token, once. None when unknown, used or expired."""
+        if not ticket or len(ticket) > 200:
+            return None
+        id_hash = hash_id(ticket)
+        row = await self.storage.get(id_hash)
+        if row is None or not row.ticket:
+            return None  # a session token is never a ticket, and stays valid
+        row = await self.storage.take(id_hash)  # removed before use: a ticket works once
+        if row is None or self._clock() >= row.expires_at:
+            return None
+        try:
+            api_key = self._box.decrypt(row.key_encrypted, _context(id_hash))
+        except SecretError:
+            return None
+        return await self.create(row.odoo_uid, row.login, api_key)
 
 
 class PostgresSessionStorage:
@@ -174,7 +214,7 @@ class PostgresSessionStorage:
         await self._run(
             "execute",
             "insert into web_sessions (id_hash, odoo_uid, login, key_encrypted, created_at, "
-            "last_seen_at, expires_at) values ($1, $2, $3, $4, $5, $6, $7)",
+            "last_seen_at, expires_at, ticket) values ($1, $2, $3, $4, $5, $6, $7, $8)",
             row.id_hash,
             row.odoo_uid,
             row.login,
@@ -182,13 +222,24 @@ class PostgresSessionStorage:
             row.created_at,
             row.last_seen_at,
             row.expires_at,
+            row.ticket,
         )
 
     async def get(self, id_hash: bytes) -> SessionRow | None:
         row = await self._run(
             "fetchrow",
             "select id_hash, odoo_uid, login, key_encrypted, created_at, last_seen_at, "
-            "expires_at from web_sessions where id_hash = $1",
+            "expires_at, ticket from web_sessions where id_hash = $1",
+            id_hash,
+        )
+        return SessionRow(**dict(row)) if row else None
+
+    async def take(self, id_hash: bytes) -> SessionRow | None:
+        """Delete and return a row in one statement, so two requests cannot both get it."""
+        row = await self._run(
+            "fetchrow",
+            "delete from web_sessions where id_hash = $1 returning id_hash, odoo_uid, login, "
+            "key_encrypted, created_at, last_seen_at, expires_at, ticket",
             id_hash,
         )
         return SessionRow(**dict(row)) if row else None

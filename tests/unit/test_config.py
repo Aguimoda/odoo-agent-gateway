@@ -96,3 +96,13 @@ def test_web_session_settings():
     assert custom.cookie_secure is True and custom.web_dir == "/srv/web"
     with pytest.raises(ValueError, match="GATEWAY_COOKIE_SECURE"):
         Settings.from_env({"ODOO_URL": "x", "ODOO_DB": "demo", "GATEWAY_COOKIE_SECURE": "maybe"})
+
+
+def test_embed_origins_default_to_none_and_can_list_odoo():
+    """ADR 0021: no one may frame the app unless Odoo is listed."""
+    base = {"ODOO_URL": "http://odoo:8069", "ODOO_DB": "demo"}
+    assert Settings.from_env(base).embed_origins == ()
+    custom = Settings.from_env(
+        {**base, "GATEWAY_EMBED_ORIGINS": "http://127.0.0.1:8069, https://odoo.example.com/"}
+    )
+    assert custom.embed_origins == ("http://127.0.0.1:8069", "https://odoo.example.com")
