@@ -167,7 +167,7 @@ def test_scoring_checks_each_expectation():
         },
     )
     good = AgentRun(scenario, ["search_knowledge"], "Tarda de 5 a 7 días (fuente: shipping.md).")
-    bad = AgentRun(scenario, ["propose_change"], "Hay un 30% de descuento.")
+    bad = AgentRun(scenario, ["propose_change"], "Hay un 30% de descuento.", stopped="max_steps")
 
     assert all(score(good).values())
     assert not any(score(bad).values())
@@ -289,3 +289,14 @@ def test_demo_credentials_are_loaded_from_the_keys_file(tmp_path):
 
     assert env["DEMO_ANA_LOGIN"] == "already-set"  # the environment wins
     assert env["DEMO_ANA_API_KEY"] == "abc"
+
+
+def test_finished_is_always_scored_so_its_rate_is_meaningful():
+    """Regression: 'finished' only appeared when false, so its rate always read 0%."""
+    s = Scenario("a", "ana", "q", {"must_not_call": ["propose_change"]})
+    runs = [AgentRun(s, [], "done"), AgentRun(s, ["search_records"], "", stopped="max_steps")]
+
+    summary = summarize(runs, model="m", provider="p")
+
+    assert summary["rates"]["finished"] == 0.5
+    assert score(runs[0])["finished"] is True

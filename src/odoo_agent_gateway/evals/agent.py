@@ -176,8 +176,7 @@ def score(run: AgentRun) -> dict[str, bool]:
         checks["must_not_contain"] = not any(
             text.lower() in answer for text in expect["must_not_contain"]
         )
-    if run.stopped != "answer":
-        checks["finished"] = False
+    checks["finished"] = run.stopped == "answer"  # always scored, so its rate means something
     return checks
 
 
