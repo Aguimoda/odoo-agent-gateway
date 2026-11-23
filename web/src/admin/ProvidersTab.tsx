@@ -7,14 +7,9 @@ import { useI18n, type MessageKey } from "../i18n";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useToast } from "../ui/Toast";
 import { useWorkspace } from "../workspace";
+import { PRESETS, presetBaseUrl } from "./presets";
 
-// Templates fill the address and a suggested model; the key is always typed by the admin.
-export const PRESETS = [
-  { name: "groq", base_url: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", label: "Groq" },
-  { name: "cerebras", base_url: "https://api.cerebras.ai/v1", model: "gpt-oss-120b", label: "Cerebras" },
-  { name: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4.1-mini", label: "OpenAI" },
-  { name: "local", base_url: "http://localhost:11434/v1", model: "qwen2.5:7b", label: "Ollama (local)" },
-];
+const TIER_TONE: Record<string, string> = { free: "badge-success", trial: "badge-warning", paid: "", local: "badge-accent" };
 
 const HEALTH_TONE: Record<string, string> = {
   ok: "badge-success",
@@ -86,6 +81,8 @@ function ProviderEditor({
       : emptyForm,
   );
   const [preset, setPreset] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState("");
+  const chosen = PRESETS.find((p) => p.name === preset);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (field: keyof ProviderForm, value: string | boolean) => setForm((f) => ({ ...f, [field]: value }));
@@ -148,13 +145,47 @@ function ProviderEditor({
                   style={preset === p.name ? { borderColor: "var(--accent)", color: "var(--accent-text)" } : undefined}
                   onClick={() => {
                     setPreset(p.name);
-                    setForm((f) => ({ ...f, name: p.name, base_url: p.base_url }));
+                    setForm((f) => ({ ...f, name: p.name, base_url: presetBaseUrl(p, { account_id: accountId }) ?? "" }));
                   }}
                 >
                   {p.label}
                 </button>
               ))}
             </div>
+            {chosen && (
+              <p className="help preset-facts">
+                <span className={`badge ${TIER_TONE[chosen.tier]}`}>{t(`providers.tier.${chosen.tier}` as MessageKey)}</span>
+                {chosen.checked && <span>{t("providers.tierChecked", { date: chosen.checked })}</span>}
+                {chosen.limitsUrl && (
+                  <a href={chosen.limitsUrl} target="_blank" rel="noopener noreferrer">
+                    {t("providers.limitsLink")}
+                  </a>
+                )}
+              </p>
+            )}
+          </div>
+        )}
+        {chosen?.needsAccountId && (
+          <div className="field">
+            <label className="label" htmlFor="provider-account">
+              {t("providers.accountId")}
+            </label>
+            <input
+              id="provider-account"
+              className="input mono"
+              value={accountId}
+              maxLength={32}
+              spellCheck={false}
+              onChange={(e) => {
+                setAccountId(e.target.value);
+                setForm((f) => ({ ...f, base_url: presetBaseUrl(chosen, { account_id: e.target.value }) ?? "" }));
+              }}
+              aria-describedby="provider-account-help"
+              required
+            />
+            <p id="provider-account-help" className="help">
+              {t("providers.accountIdHelp")}
+            </p>
           </div>
         )}
         <div className="form-grid">
