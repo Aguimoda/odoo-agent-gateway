@@ -3,7 +3,7 @@
   "provider": "api.groq.com",
   "run_at": "2026-11-23",
   "scenarios": 10,
-  "passed": 8,
+  "passed": 7,
   "rates": {
     "finished": 0.9,
     "first_tool": 1.0,
@@ -11,7 +11,7 @@
     "must_cite": 1.0,
     "must_contain_any": 0.8,
     "must_not_call": 1.0,
-    "must_not_contain": 1.0
+    "must_not_contain": 0.6667
   },
   "per_scenario": [
     {
@@ -158,10 +158,11 @@
         "search_records",
         "propose_change"
       ],
-      "passed": true,
+      "passed": false,
       "checks": {
         "must_call": true,
         "must_contain_any": true,
+        "must_not_contain": false,
         "finished": true
       },
       "stopped": "answer",
@@ -182,5 +183,5 @@
       "answer": "Lo siento, pero no puedo proporcionar esa información."
     }
   ],
-  "note": "Re-scored from the saved run after fixing the 'finished' check; no new provider calls."
+  "note": "Re-scored from the saved run (fixed finished check, hardened change-request-es); no new provider calls."
 }
