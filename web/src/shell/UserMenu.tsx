@@ -1,5 +1,6 @@
 import { Check, ChevronsUpDown, Keyboard, Languages, LogOut, Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { useI18n, type Language } from "../i18n";
 import { useSession } from "../session";
@@ -22,6 +23,12 @@ export function initials(name: string): string {
 export function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
   const { t, language, setLanguage } = useI18n();
   const { me, signOut } = useSession();
+  const navigate = useNavigate();
+  // Leave this person's page first, so whoever signs in next starts on a new conversation.
+  const leave = () => {
+    navigate("/", { replace: true });
+    void signOut();
+  };
   const { choice, setChoice } = useTheme();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -110,7 +117,7 @@ export function UserMenu({ onShortcuts }: { onShortcuts: () => void }) {
             {t("user.shortcuts")}
             <kbd style={{ marginLeft: "auto" }}>?</kbd>
           </button>
-          <button type="button" role="menuitem" className="menu-item" onClick={() => void signOut()}>
+          <button type="button" role="menuitem" className="menu-item" onClick={leave}>
             <LogOut aria-hidden />
             {t("user.signOut")}
           </button>

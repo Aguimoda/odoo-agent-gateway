@@ -301,3 +301,45 @@ def test_only_administrators_see_the_panel(page, demo, models):
     page.get_by_role("link", name="Administración").click()
     expect(page.get_by_role("heading", name=f"e2e-good-{models['good'][-6:]}")).to_be_visible()
     assert page.csp_errors == []
+
+
+def test_the_next_person_starts_on_a_new_conversation(page, demo, models):
+    """Scenario: entrar como otra persona (M7.1)."""
+    from playwright.sync_api import expect
+
+    sign_in(page, demo, "ana")
+    page.get_by_label("Modelo").select_option(
+        label=f"{models['good']} · e2e-good-{models['good'][-6:]}"
+    )
+    ask(page, "¿Cuál es el plazo de envío?")
+    expect(page.get_by_role("button", name="Copiar respuesta")).to_have_count(1, timeout=30_000)
+    assert "/app/chat/" in page.url  # Ana is on her conversation
+    page.get_by_role("button", name="Cuenta y preferencias").click()
+    page.get_by_role("menuitem", name="Salir").click()
+
+    # Luis signs in on the same page, without reloading it.
+    page.get_by_label("Usuario de Odoo").fill(demo["DEMO_LUIS_LOGIN"])
+    page.get_by_label("Clave API de Odoo").fill(demo["DEMO_LUIS_API_KEY"])
+    page.get_by_role("button", name="Entrar").click()
+    expect(page.get_by_role("heading", name="¿En qué te ayudo, Luis")).to_be_visible()
+    assert page.url.rstrip("/").endswith("/app/chat")
+    expect(page.get_by_label("Escribe un mensaje…")).to_be_enabled()
+
+
+def test_carmen_browses_a_providers_models_and_adds_one(page, demo, models):
+    """Scenarios: ver los modelos disponibles; añadir un modelo desde la lista (M7.1)."""
+    from playwright.sync_api import expect
+
+    sign_in(page, demo, "carmen")
+    page.get_by_role("link", name="Administración").click()
+    panel = page.get_by_role("article").filter(
+        has=page.get_by_role("heading", name=f"e2e-good-{models['good'][-6:]}")
+    )
+    panel.get_by_role("button", name="Ver modelos disponibles").click()
+    catalog = panel.get_by_role("region", name="Modelos disponibles")
+    added = catalog.get_by_role("row").filter(has_text="scripted-mini")
+    expect(added).to_contain_text("Añadido")
+    other = catalog.get_by_role("row").filter(has_text="scripted-large")
+    other.get_by_role("button", name="Añadir: scripted-large").click()
+    expect(other).to_contain_text("Añadido")
+    assert page.csp_errors == []
