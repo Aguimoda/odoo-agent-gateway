@@ -47,7 +47,10 @@ def odoo(command: str, stdin: str | None = None) -> str:
 
 def main() -> None:
     print(f"Creating or updating database '{DB}' with the Sales app and demo data...")
-    odoo(f"odoo -d {DB} -i sale_management --stop-after-init --no-http {DB_ARGS}")
+    odoo(
+        f"odoo -d {DB} -i sale_management,agent_gateway_connector --stop-after-init "
+        f"--no-http {DB_ARGS}"
+    )
 
     print("Creating demo users, orders and API keys...")
     seed = (ROOT / "scripts" / "demo" / "seed.py").read_text(encoding="utf-8")
@@ -80,12 +83,17 @@ def main() -> None:
         prefix = f"DEMO_{login.upper()}"
         lines.append(f"{prefix}_LOGIN={login}")
         lines.append(f"{prefix}_API_KEY={result['keys'][login]}")
+        lines.append(f"{prefix}_PASSWORD={result['passwords'][login]}")
         if login in result["orders"]:
             lines.append(f"{prefix}_ORDER_IDS={','.join(map(str, result['orders'][login]))}")
     lines.append(
         "# Master key that encrypts provider API keys at rest (ADR 0015). Kept across runs."
     )
     lines.append(f"GATEWAY_SECRET_KEYS={secret_keys}")
+    lines.append("# Inside Odoo (ADR 0021): Odoo may frame the app, and reaches the gateway at")
+    lines.append("# host.docker.internal from its container.")
+    lines.append("GATEWAY_EMBED_ORIGINS=http://127.0.0.1:8069,http://localhost:8069")
+    lines.append("GATEWAY_ALLOWED_HOSTS=127.0.0.1:*,localhost:*,[::1]:*,host.docker.internal:*")
     lines.append("# Read-only service account for the offline knowledge indexer (ADR 0011).")
     lines.append("INDEXER_LOGIN=indexer")
     lines.append(f"INDEXER_API_KEY={result['keys']['indexer']}")

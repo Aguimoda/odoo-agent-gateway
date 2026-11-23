@@ -49,14 +49,16 @@ async function ensureConsent(orm, dialog) {
 /** The gateway's app in a frame. It asks for a new ticket only when it has no session. */
 export class GatewayFrame extends Component {
     static template = "agent_gateway_connector.GatewayFrame";
-    static props = { page: String, publicUrl: String };
+    static props = { page: String, publicUrl: String, login: String };
 
     setup() {
         this.orm = useService("orm");
         this.frame = useRef("frame");
         this.origin = new URL(this.props.publicUrl).origin;
         // First without a ticket: an existing session in this browser is reused, no new key.
-        this.state = useState({ src: `${this.props.publicUrl}/app/embed/${this.props.page}`, error: null });
+        // `as` tells the app whom the panel is for, so another person's session is closed.
+        const as = encodeURIComponent(this.props.login);
+        this.state = useState({ src: `${this.props.publicUrl}/app/embed/${this.props.page}?as=${as}`, error: null });
         this.onMessage = (event) => this.handleMessage(event);
         onMounted(() => window.addEventListener("message", this.onMessage));
         onWillUnmount(() => window.removeEventListener("message", this.onMessage));
@@ -91,7 +93,7 @@ export class AssistantSystray extends Component {
         this.orm = useService("orm");
         this.dialog = useService("dialog");
         this.notification = useService("notification");
-        this.state = useState({ open: false, publicUrl: null });
+        this.state = useState({ open: false, publicUrl: null, login: null });
     }
 
     async toggle() {
@@ -108,6 +110,7 @@ export class AssistantSystray extends Component {
         }
         if (ok) {
             this.state.publicUrl = status.public_url;
+            this.state.login = status.login;
             this.state.open = true;
         }
     }
@@ -127,7 +130,7 @@ export class EmbedAction extends Component {
         this.orm = useService("orm");
         this.dialog = useService("dialog");
         this.page = this.props.action?.params?.page || "chat";
-        this.state = useState({ ready: false, publicUrl: null, message: null });
+        this.state = useState({ ready: false, publicUrl: null, login: null, message: null });
         onMounted(() => this.start());
     }
 
@@ -141,6 +144,7 @@ export class EmbedAction extends Component {
             this.state.message = _t("The assistant works only after you allow it.");
         } else {
             this.state.publicUrl = status.public_url;
+            this.state.login = status.login;
             this.state.ready = true;
         }
     }

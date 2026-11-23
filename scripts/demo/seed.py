@@ -111,8 +111,23 @@ keys = {
     for user in (ana, luis, indexer, carmen)
 }
 
+# Passwords to sign in to Odoo in a browser (M8 browser tests and trying the module).
+# Random on every run and handed back like the keys; never printed.
+passwords = {}
+for user in (ana, luis, carmen):
+    passwords[user.login] = secrets.token_urlsafe(18)
+    user.password = passwords[user.login]
+
+# The assistant module (ADR 0021): where browsers open the gateway, and where this Odoo
+# server (inside Docker) reaches it on the host.
+params = env["ir.config_parameter"].sudo()
+params.set_param("agent_gateway_connector.public_url", "http://127.0.0.1:8000")
+params.set_param("agent_gateway_connector.server_url", "http://host.docker.internal:8000")
+
 env.cr.commit()
 print(
     "DEMO_RESULT_JSON="
-    + json.dumps({"keys": keys, "orders": orders, "admin_password": admin_password})
+    + json.dumps(
+        {"keys": keys, "orders": orders, "admin_password": admin_password, "passwords": passwords}
+    )
 )

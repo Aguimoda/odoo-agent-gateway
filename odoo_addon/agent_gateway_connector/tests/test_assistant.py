@@ -54,6 +54,7 @@ class TestAssistant(TransactionCase):
         self.assertEqual(status["public_url"], "http://127.0.0.1:8000")
         self.assertTrue(status["configured"])
         self.assertFalse(status["consent"])
+        self.assertEqual(status["login"], "aga_ana")
         self.assertNotIn("server_url", status)  # the browser only needs its own address
 
     def test_no_key_without_consent(self):
@@ -80,6 +81,7 @@ class TestAssistant(TransactionCase):
         self.assertEqual(len(kwargs["json"]["api_key"]), 40)  # a real key went to the gateway only
         self.assertTrue(result["url"].startswith("http://127.0.0.1:8000/app/embed/chat?"))
         self.assertTrue(result["url"].endswith("#ticket=" + "t" * 43))
+        self.assertIn("as=aga_ana", result["url"])  # the panel knows whom it is for
         self.assertNotIn(kwargs["json"]["api_key"], str(result))  # never to the browser
 
     def test_only_known_pages_can_be_opened(self):

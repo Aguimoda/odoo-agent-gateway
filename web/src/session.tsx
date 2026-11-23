@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { ApiError, del, get, onSignedOut, post } from "./api/client";
 import type { Me } from "./api/types";
-import { initialTicket } from "./embed";
+import { initialTicket, panelLogin } from "./embed";
 
 type State =
   | { status: "loading" }
@@ -36,7 +36,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
     }
     get<Me>("/session")
-      .then((me) => active && setState({ status: "signed-in", me }))
+      .then((me) => {
+        if (!active) return;
+        if (panelLogin && me.login !== panelLogin) {
+          // Someone else's session in this browser: close it, Odoo opens one for this person.
+          void del("/session").finally(() => active && setState({ status: "signed-out" }));
+          return;
+        }
+        setState({ status: "signed-in", me });
+      })
       .catch((error: unknown) => {
         if (!active) return;
         const unreachable = error instanceof ApiError && (error.status === 0 || error.status >= 500);

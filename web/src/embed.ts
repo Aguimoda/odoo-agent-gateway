@@ -12,6 +12,14 @@ export function ticketFromHash(hash: string): string | null {
   return match ? match[1]! : null;
 }
 
+/** The Odoo login the panel is for (`?as=`): another person's session is never reused. */
+export function expectedLogin(search: string): string | null {
+  return new URLSearchParams(search).get("as") || null;
+}
+
+export const panelLogin =
+  typeof window !== "undefined" && isEmbedded() ? expectedLogin(window.location.search) : null;
+
 /** The ticket of this page load, taken once and removed from the address bar and history. */
 function takeTicket(): string | null {
   if (typeof window === "undefined" || !isEmbedded()) return null;

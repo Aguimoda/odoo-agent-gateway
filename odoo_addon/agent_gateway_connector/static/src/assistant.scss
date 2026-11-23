@@ -20,7 +20,8 @@
     z-index: 1050;
     display: flex;
     flex-direction: column;
-    width: min(440px, 100vw);
+    width: 440px;
+    max-width: 100vw;
     background-color: $o-view-background-color;
     color: $o-main-text-color;
     border-left: 1px solid $border-color;

@@ -7,6 +7,7 @@ settings from ir.config_parameter, which ordinary users cannot read.
 import logging
 import secrets
 from datetime import timedelta
+from urllib.parse import quote
 
 import requests
 from odoo import _, api, fields, models
@@ -70,6 +71,7 @@ class ResUsers(models.Model):
             "configured": bool(settings["public_url"] and settings["server_url"]),
             "consent": self.env.user.sudo(False).agent_gateway_consent,
             "public_url": settings["public_url"],
+            "login": self.env.user.login,
         }
 
     @api.model
@@ -111,7 +113,8 @@ class ResUsers(models.Model):
             )
             raise UserError(_("The assistant could not be reached. Try again in a moment."))
         nonce = secrets.token_hex(4)  # a new address, so the panel reloads with the ticket
-        return {"url": f"{settings['public_url']}/app/embed/{page}?open={nonce}#ticket={ticket}"}
+        query = f"open={nonce}&as={quote(user.login, safe='')}"
+        return {"url": f"{settings['public_url']}/app/embed/{page}?{query}#ticket={ticket}"}
 
     def agent_gateway_revoke(self):
         """Delete the person's assistant keys and their consent. Only ever for oneself."""

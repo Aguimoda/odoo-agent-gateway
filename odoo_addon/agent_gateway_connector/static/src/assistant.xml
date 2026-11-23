@@ -22,7 +22,7 @@
                         <i class="fa fa-times" aria-hidden="true"/>
                     </button>
                 </header>
-                <GatewayFrame page="'chat'" publicUrl="state.publicUrl"/>
+                <GatewayFrame page="'chat'" publicUrl="state.publicUrl" login="state.login"/>
             </aside>
         </div>
     </t>
@@ -30,7 +30,7 @@
     <t t-name="agent_gateway_connector.EmbedAction">
         <div class="o_agent_gateway_action">
             <div t-if="state.message" class="alert alert-info m-3" role="status" t-esc="state.message"/>
-            <GatewayFrame t-if="state.ready" page="page" publicUrl="state.publicUrl"/>
+            <GatewayFrame t-if="state.ready" page="page" publicUrl="state.publicUrl" login="state.login"/>
         </div>
     </t>
 </templates>
