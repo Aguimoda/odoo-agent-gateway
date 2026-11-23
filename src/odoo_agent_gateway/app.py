@@ -1,4 +1,4 @@
-"""FastAPI application: `/health`, `/approvals`, `/admin` and MCP at `/mcp`."""
+"""FastAPI application: `/health`, `/approvals`, `/admin`, `/agent` and MCP at `/mcp`."""
 
 from __future__ import annotations
 
@@ -13,9 +13,12 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from odoo_agent_gateway import __version__, tracing
 from odoo_agent_gateway.admin import build_admin_router
+from odoo_agent_gateway.agent_api import build_agent_router
 from odoo_agent_gateway.approvals import build_approval_router
+from odoo_agent_gateway.assistant import AgentService, McpToolRunner, internal_host
 from odoo_agent_gateway.audit import AuditSink, PostgresAuditSink
 from odoo_agent_gateway.config import Settings
+from odoo_agent_gateway.conversation_store import PostgresConversationStore
 from odoo_agent_gateway.embeddings import FastEmbedEmbedder
 from odoo_agent_gateway.gateway import Gateway, HttpClientFactory, OdooProvider
 from odoo_agent_gateway.knowledge import KnowledgeSearch
@@ -70,6 +73,7 @@ def create_app(
     # Providers and the agent need the database and the master keys (ADR 0015).
     provider_store: PostgresProviderStore | None = None
     registry: ProviderRegistry | None = None
+    conversation_store: PostgresConversationStore | None = None
     llm_client = llm_http
     if settings.database_url and settings.secret_keys:
         provider_store = PostgresProviderStore(settings.database_url)
@@ -80,6 +84,7 @@ def create_app(
             ChatClient(llm_client),
             local_hosts=settings.local_provider_hosts,
         )
+        conversation_store = PostgresConversationStore(settings.database_url)
 
     # One gateway path, one rate limiter, for every channel.
     gateway = Gateway(provider, audit_sink, RateLimiter(settings.rate_limit_per_minute))
@@ -101,10 +106,22 @@ def create_app(
         ),
     )
 
+    agent: AgentService | None = None
+    if registry is not None and conversation_store is not None:
+        host = internal_host(settings.allowed_hosts)
+        agent = AgentService(
+            registry,
+            conversation_store,
+            ChatClient(llm_client),
+            runner_factory=lambda headers: McpToolRunner(mcp_app, host, headers),
+            messages_per_minute=settings.agent_messages_per_minute,
+        )
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await audit_sink.start()  # applies the schema; fails start-up if the DB is down
-        for store in (knowledge_store, proposal_store, provider_store):
+        stores = (knowledge_store, proposal_store, provider_store, conversation_store)
+        for store in stores:
             if store is not None:
                 await store.start()
         if embedder is not None:
@@ -117,7 +134,7 @@ def create_app(
             await audit_sink.close()
             if llm_client is not None:
                 await llm_client.aclose()
-            for store in (knowledge_store, proposal_store, provider_store):
+            for store in stores:
                 if store is not None:
                     await store.close()
 
@@ -131,5 +148,6 @@ def create_app(
     app.include_router(
         build_admin_router(gateway, registry, settings.admin_group, settings.allowed_hosts)
     )
+    app.include_router(build_agent_router(gateway, agent, settings.allowed_hosts))
     app.mount("/", mcp_app)  # serves /mcp; mounted last so it does not shadow other routes
     return app
