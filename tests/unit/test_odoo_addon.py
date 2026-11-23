@@ -50,3 +50,12 @@ def test_the_manifest_is_valid_and_versioned_for_odoo_18():
 def test_the_browser_code_never_handles_a_key():
     script = (ADDON / "static" / "src" / "assistant.js").read_text(encoding="utf-8")
     assert "api_key" not in script and "apikey" not in script.lower()
+
+
+def test_the_assistant_is_never_the_app_odoo_opens_after_sign_in():
+    """Odoo opens the first app after sign-in; ours would greet everyone with its consent notice."""
+    import xml.etree.ElementTree as ElementTree
+
+    menus = ElementTree.parse(ADDON / "views" / "menus.xml").getroot()
+    root = next(m for m in menus.iter("menuitem") if m.get("id") == "menu_assistant_root")
+    assert int(root.get("sequence")) >= 50

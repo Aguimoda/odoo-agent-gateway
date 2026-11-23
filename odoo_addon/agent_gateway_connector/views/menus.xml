@@ -16,7 +16,7 @@
         <field name="params" eval="{'page': 'admin'}"/>
     </record>
 
-    <menuitem id="menu_assistant_root" name="Assistant" sequence="5"
+    <menuitem id="menu_assistant_root" name="Assistant" sequence="90"
               web_icon="agent_gateway_connector,static/description/icon.png"
               groups="base.group_user"/>
     <menuitem id="menu_assistant_chat" name="Chat" parent="menu_assistant_root"
