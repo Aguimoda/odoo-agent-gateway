@@ -6,53 +6,20 @@ credentials checked by Odoo, audit with fail-closed), and the approver's own cre
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from odoo_agent_gateway.gateway import Gateway
-from odoo_agent_gateway.odoo import OdooError, OdooSession
+from odoo_agent_gateway.http_api import call_through_gateway, host_allowed  # noqa: F401
+from odoo_agent_gateway.odoo import OdooSession
 from odoo_agent_gateway.proposal_store import ProposalsUnavailable
-
-HTTP_STATUS = {
-    "unauthenticated": 401,
-    "forbidden": 403,
-    "four_eyes": 403,
-    "not_found": 404,
-    "conflict": 409,
-    "invalid_request": 422,
-    "rate_limited": 429,
-    "internal_error": 500,
-    "odoo_unavailable": 502,
-    "audit_unavailable": 503,
-    "proposals_unavailable": 503,
-    "providers_unavailable": 503,
-    "model_unavailable": 409,
-}
 
 
 class DecisionBody(BaseModel):
     note: str | None = None
-
-
-def host_allowed(host: str, patterns: tuple[str, ...] | list[str]) -> bool:
-    """Same host rules as the MCP endpoint (ADR 0007): 'name' or 'name:*' for any port."""
-    host = (host or "").strip().lower()
-    if not host:
-        return False
-    for pattern in patterns:
-        pattern = pattern.lower()
-        if pattern.endswith(":*"):
-            base = pattern[:-2]
-            if host == base or host.startswith(base + ":"):
-                return True
-        elif host == pattern:
-            return True
-    return False
 
 
 def build_approval_router(
@@ -66,21 +33,12 @@ def build_approval_router(
         arguments: dict[str, Any],
         action: Callable[[OdooSession], Awaitable[Any]],
     ) -> Any:
-        if not host_allowed(request.headers.get("host", ""), allowed_hosts):
-            return JSONResponse(
-                status_code=421, content={"error": "misdirected", "message": "Host not allowed."}
-            )
-        try:
+        async def run(session: OdooSession) -> Any:
             if proposals is None:
                 raise ProposalsUnavailable("Change proposals are not configured on this gateway.")
-            return await gateway.execute(
-                request.headers, str(uuid.uuid4()), tool, arguments, action
-            )
-        except OdooError as error:
-            return JSONResponse(
-                status_code=HTTP_STATUS.get(error.code, 400),
-                content={"error": error.code, "message": str(error)},
-            )
+            return await action(session)
+
+        return await call_through_gateway(gateway, request, allowed_hosts, tool, arguments, run)
 
     @router.get("/pending")
     async def pending(request: Request, limit: int | None = None) -> Any:

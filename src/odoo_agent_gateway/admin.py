@@ -7,18 +7,16 @@ credentials, fail-closed audit). Provider API keys are write-only and never audi
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from odoo_agent_gateway.approvals import HTTP_STATUS, host_allowed
 from odoo_agent_gateway.gateway import Gateway
-from odoo_agent_gateway.odoo import AccessDenied, InvalidRequest, OdooError, OdooSession
+from odoo_agent_gateway.http_api import call_through_gateway
+from odoo_agent_gateway.odoo import AccessDenied, InvalidRequest, OdooSession
 from odoo_agent_gateway.provider_store import ProvidersUnavailable
 from odoo_agent_gateway.providers import ProviderRegistry
 
@@ -88,11 +86,6 @@ def build_admin_router(
         arguments: dict[str, Any],
         action: Callable[[ProviderRegistry, OdooSession], Awaitable[Any]],
     ) -> Any:
-        if not host_allowed(request.headers.get("host", ""), allowed_hosts):
-            return JSONResponse(
-                status_code=421, content={"error": "misdirected", "message": "Host not allowed."}
-            )
-
         async def run(session: OdooSession) -> Any:
             await require_admin(session, admin_group)
             if registry is None:
@@ -101,15 +94,9 @@ def build_admin_router(
                 )
             return await action(registry, session)
 
-        try:
-            return await gateway.execute(
-                request.headers, str(uuid.uuid4()), tool, audit_arguments(arguments), run
-            )
-        except OdooError as error:
-            return JSONResponse(
-                status_code=HTTP_STATUS.get(error.code, 400),
-                content={"error": error.code, "message": str(error)},
-            )
+        return await call_through_gateway(
+            gateway, request, allowed_hosts, tool, audit_arguments(arguments), run
+        )
 
     @router.get("/providers")
     async def list_providers(request: Request) -> Any:
