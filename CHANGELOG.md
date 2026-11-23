@@ -4,6 +4,25 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-23
+
+Milestone M6: the agent service and its providers. The roadmap now follows the product plan (`docs/PRODUCT-PLAN.md`): M7 web chat and admin panel, M8 Odoo module, M9 deployment.
+
+### Added
+
+- `/agent` API: conversations and answers streamed as Server-Sent Events (`start`, `token`, `tool_call`, `tool_result`, `proposal`, `notice`, `error`, `done`). The agent's tool calls go through the gateway's own MCP endpoint in process with the person's key, so they are rate-limited, permission-checked and audited like any agent's (ADR 0016).
+- Safe default instructions that carry the lessons of the real-agent evaluation (say plainly when something was not found; never claim a change that was only proposed), and a final answer without tools when the step limit is reached. Company instructions only add to them.
+- Private conversations, owned by the Odoo user id and filtered by it in SQL, deletable by their owner and purged after a configurable retention. Tool names and arguments are kept; what the tools returned is not.
+- Provider registry for any OpenAI-compatible API. Keys are encrypted with AES-256-GCM under master keys from `GATEWAY_SECRET_KEYS`, bound to the provider URL, write-only, and replaced by `***` in the audit log; plain `http` only reaches local hosts and redirects are never followed (ADR 0015).
+- `/admin` API for providers, models, connection tests, agent settings and usage, answering only to members of `GATEWAY_ADMIN_GROUP` as Odoo reports it.
+- Provider failures classified into seven kinds and explained with the other models available; no automatic fallback, and `/retry` with the model the person picks. Short waits absorbed, refused keys and used-up quotas tracked, a per-provider circuit breaker, and optional per-minute and per-day limits (ADR 0017).
+- Usage per call (provider, model, person, outcome, tokens, latency) and its summary.
+- Demo: Carmen, an IT administrator without sales rights, a master key kept across runs, and `scripts/demo/try_assistant.py` to talk to the assistant with a real provider.
+
+### Changed
+
+- The approval, admin and agent APIs share one helper for the host check, the Gateway path and error responses.
+
 ## [0.5.0] - 2026-11-23
 
 Milestone M5: evaluation and observability.

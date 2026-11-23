@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M5 done (version 0.5.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the public deployment comes in M6.
+> **Status: milestone M6 done (version 0.6.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the web chat comes in M7 and the public deployment in M9.
 
 ## The problem
 
@@ -62,7 +62,7 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M3 | Retrieval with pgvector, filtered by permissions | Done |
 | M4 | Write proposals with four-eyes approval | Done |
 | M5 | Retrieval evaluation in CI, calibrated threshold, traces, usage report, real-agent harness | Done |
-| M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | In progress |
+| M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | Done |
 | M7 | Web chat, admin panel and approval inbox | Planned |
 | M8 | Odoo module: the chat and the inbox inside Odoo | Planned |
 | M9 | Cloud deployment with a public demo, and a short video | Planned |
@@ -80,7 +80,7 @@ docker compose up -d               # Odoo 18 on http://127.0.0.1:8069 plus two P
 python -m venv .venv
 .venv/bin/pip install -e ".[dev]"  # on Windows: .venv\Scripts\pip
 
-python scripts/demo/setup_demo.py  # demo database with users "ana", "luis" and "indexer"
+python scripts/demo/setup_demo.py  # demo database with users "ana", "luis", "carmen" and "indexer"
 
 set -a; . ./.env.demo-keys; set +a  # load the demo settings into the shell
 .venv/bin/python -m odoo_agent_gateway.index --docs scripts/demo/knowledge   # build the knowledge index
@@ -129,6 +129,48 @@ curl -X POST -H "X-Odoo-Login: luis" -H "Authorization: Bearer $LUIS_KEY" \
 ```
 
 Possible outcomes: `applied`, `conflict` (the record changed after the proposal), `failed` (Odoo refused the values), `expired` (older than 7 days) or `rejected`. Errors: `four_eyes` (your own proposal), `forbidden` (you cannot see or edit the record; it stays pending for someone who can), `conflict` (already decided). Every decision is audited.
+
+### The assistant
+
+The gateway also runs the agent itself ([ADR 0016](docs/adr/0016-agent-service-through-the-mcp-endpoint.md)): a person sends a message and the answer streams back while it is written, with the agent using the tools **as that person**. Its tool calls go through the gateway's own `/mcp` endpoint in process, so they are rate-limited, permission-checked and audited exactly like an external agent's. The web chat and admin screens come in M7; M6 is the API underneath.
+
+It is on when `GATEWAY_SECRET_KEYS` is set. `setup_demo.py` writes one to `.env.demo-keys` and keeps it across runs; for a server, generate one with `python -m odoo_agent_gateway.secretbox`.
+
+**Try it with a real provider** (Groq or Cerebras free tiers work). With the gateway running:
+
+```bash
+.venv/bin/python scripts/demo/try_assistant.py --provider groq                 # asks as Ana
+.venv/bin/python scripts/demo/try_assistant.py --provider groq --user luis "¿Qué pedidos tiene Acme Demo SL?"
+```
+
+The first time, the demo IT administrator registers the provider and you type its API key at a prompt that does not echo. Tool calls show in brackets, and a provider failure lists the models you could switch to.
+
+**Administration** ([ADR 0015](docs/adr/0015-encrypted-provider-keys-and-odoo-admin-group.md)). Odoo decides who administers: members of `GATEWAY_ADMIN_GROUP` (default `base.group_system`, Settings), asked of Odoo as the caller. In the demo that is **Carmen** (IT, no sales rights); Ana and Luis get `forbidden`.
+
+```bash
+# add a provider; the key is encrypted, bound to this URL, and never shown again
+curl -X POST -H "X-Odoo-Login: carmen" -H "Authorization: Bearer $CARMEN_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "groq", "base_url": "https://api.groq.com/openai/v1", "api_key": "..."}' \
+     http://127.0.0.1:8000/admin/providers
+```
+
+| Endpoint | What it does |
+|---|---|
+| `GET /admin/providers` | Providers, their models and health (`ok`, `auth_failed`, `exhausted` until when, `circuit_open`…). Keys are never returned |
+| `POST /admin/providers`, `PATCH`/`DELETE /admin/providers/{id}` | Add, change or remove a provider. Changing its URL requires the key again; plain `http` only for local hosts |
+| `POST /admin/providers/{id}/test` | Checks URL and key by listing the provider's models |
+| `POST /admin/providers/{id}/models`, `PATCH`/`DELETE /admin/models/{id}` | Models, one of them the default |
+| `GET`/`PATCH /admin/settings` | Company instructions (added to the safe defaults, never replacing them), retention days, disabled tools, step limit |
+| `GET /admin/usage?days=7` | Calls, errors by kind, tokens and p50/p95 latency per provider and model |
+
+**Conversations.** `POST /agent/conversations` starts one; `POST /agent/conversations/{id}/messages` with `{"content": "...", "model_id": 3}` answers as Server-Sent Events: `start`, `token`, `tool_call`, `tool_result` (outcome and count, never the data), `proposal`, `notice`, `error` and `done`. `GET /agent/models` lists the models available now. Each person sees and deletes only their own conversations (anyone else gets `not_found`), which are purged after the retention period. They keep the questions, the answers and which tools were used with which arguments, but **not what the tools returned**: permissions can change, and an old conversation must not show data the person can no longer see.
+
+**When a provider fails** ([ADR 0017](docs/adr/0017-provider-failures-explained-not-hidden.md)), the `error` event says what happened (`rate_limited`, `quota_exhausted`, `auth_failed`, `model_unavailable`, `context_too_long`, `provider_unavailable`, `bad_request`), when to retry if known, and which other models are available now. **Nothing switches model on its own**, because that would send company data to a provider nobody chose; `POST /agent/conversations/{id}/retry` answers the last message again with the model the person picks. Short waits are absorbed, a refused key takes the provider out until an administrator replaces it, a used-up daily quota until the next day, and a circuit breaker stops calling a provider for a minute after three failures in a row. Known per-minute and per-day limits can be set per provider so the free tier is not hit at all.
+
+What is sent to the provider: the questions and what the tools return, that is, real company data. Choose providers accordingly; a local model (`GATEWAY_LOCAL_PROVIDER_HOSTS`) keeps it in house.
+
+Settings: `GATEWAY_SECRET_KEYS` (comma-separated master keys; the first encrypts, the rest still decrypt, for rotation), `GATEWAY_ADMIN_GROUP`, `GATEWAY_LOCAL_PROVIDER_HOSTS` (hosts allowed over plain `http`, besides loopback), `GATEWAY_AGENT_MESSAGES_PER_MINUTE` (default 10 per person).
 
 ### Tests
 
@@ -200,6 +242,13 @@ src/odoo_agent_gateway/
   proposals.py     propose, approve, reject: four eyes, conflict check (ADR 0012)
   proposal_store.py  change_proposals table; decided proposals are final
   approvals.py     the /approvals API (not an MCP tool)
+  assistant.py     the agent loop, streamed, tools through /mcp (ADR 0016)
+  agent_api.py     the /agent API: models, conversations, messages
+  llm.py           OpenAI-compatible client, failure kinds, circuit breaker (ADR 0017)
+  providers.py     provider registry, health and limits
+  admin.py         the /admin API, decided by an Odoo group (ADR 0015)
+  secretbox.py     AES-GCM encryption of provider keys (ADR 0015)
+  provider_store.py, conversation_store.py  their tables
   gateway.py       the shared path: limit, credentials, action, audit
   tracing.py       OpenTelemetry spans, off by default (ADR 0014)
   report.py        usage report from the audit log
@@ -208,7 +257,7 @@ src/odoo_agent_gateway/
   embeddings.py    local multilingual embeddings (ADR 0010)
   indexer.py, index.py  offline indexer and its command
   migrations/      SQL for the gateway database
-  app.py           FastAPI app: /health and /mcp (ADR 0007)
+  app.py           FastAPI app: /health, /approvals, /admin, /agent and /mcp (ADR 0007)
 tests/unit/        fast tests, no Odoo needed
 tests/integration/ acceptance scenarios against real Odoo
 .github/           CI workflow
