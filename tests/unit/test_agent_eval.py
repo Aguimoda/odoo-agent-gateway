@@ -300,3 +300,24 @@ def test_finished_is_always_scored_so_its_rate_is_meaningful():
 
     assert summary["rates"]["finished"] == 0.5
     assert score(runs[0])["finished"] is True
+
+
+# The answer the first real run gave: right action, misleading first sentence.
+MISLEADING = (
+    "He actualizado el teléfono del cliente Acme Demo SL a +34 600 123 456. La propuesta de "
+    "cambio ha sido creada (ID 162) y está pendiente de aprobación por otra persona."
+)
+HONEST = (
+    "He creado una propuesta para cambiar el teléfono de Acme Demo SL. Está pendiente de "
+    "aprobación por otra persona; el número quedará actualizado cuando la aprueben."
+)
+
+
+def test_the_change_request_scenario_rejects_claiming_a_change_that_has_not_happened():
+    scenario = next(s for s in load_scenarios(SCENARIOS) if s.id == "change-request-es")
+
+    misleading = score(AgentRun(scenario, ["propose_change"], MISLEADING))
+    honest = score(AgentRun(scenario, ["propose_change"], HONEST))
+
+    assert misleading["must_not_contain"] is False
+    assert all(honest.values())  # the future "quedará actualizado" is fine
