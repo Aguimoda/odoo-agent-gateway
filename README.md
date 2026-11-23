@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M7 done (version 0.7.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Since M7 people use it from a web app: chat, approvals inbox and admin panel, with the Odoo key kept on the server. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the Odoo module comes in M8 and the public deployment in M9.
+> **Status: milestone M7.1 done (version 0.7.1).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Since M7 people use it from a web app: chat, approvals inbox and admin panel, with the Odoo key kept on the server. M7.1 made it work with real free providers (Groq, Gemini, OpenRouter, Cloudflare): a model catalog, a tokens-per-minute budget and a final answer that always comes. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the Odoo module comes in M8 and the public deployment in M9.
 
 ## The problem
 
@@ -64,6 +64,7 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M5 | Retrieval evaluation in CI, calibrated threshold, traces, usage report, real-agent harness | Done |
 | M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | Done |
 | M7 | Web chat, admin panel and approval inbox | Done |
+| M7.1 | Model catalog, provider templates, token budget, fixes from real providers | Done |
 | M8 | Odoo module: the chat and the inbox inside Odoo | Planned |
 | M9 | Cloud deployment with a public demo, and a short video | Planned |
 
@@ -136,7 +137,7 @@ The gateway also runs the agent itself ([ADR 0016](docs/adr/0016-agent-service-t
 
 It is on when `GATEWAY_SECRET_KEYS` is set. `setup_demo.py` writes one to `.env.demo-keys` and keeps it across runs; for a server, generate one with `python -m odoo_agent_gateway.secretbox`.
 
-**Try it with a real provider** (Groq or Cerebras free tiers work). With the gateway running:
+**Try it with a real provider.** Free plans that worked with tools on 2026-11-23: Groq (`openai/gpt-oss-120b`), Gemini (`models/gemini-3.5-flash-lite`), Cloudflare Workers AI (`@cf/openai/gpt-oss-120b`) and OpenRouter (`nvidia/nemotron-3-ultra-550b-a55b:free`); the admin panel has a template for each. With the gateway running:
 
 ```bash
 .venv/bin/python scripts/demo/try_assistant.py --provider groq                 # asks as Ana
@@ -160,13 +161,14 @@ curl -X POST -H "X-Odoo-Login: carmen" -H "Authorization: Bearer $CARMEN_KEY" \
 | `GET /admin/providers` | Providers, their models and health (`ok`, `auth_failed`, `exhausted` until when, `circuit_open`…). Keys are never returned |
 | `POST /admin/providers`, `PATCH`/`DELETE /admin/providers/{id}` | Add, change or remove a provider. Changing its URL requires the key again; plain `http` only for local hosts |
 | `POST /admin/providers/{id}/test` | Checks URL and key by listing the provider's models |
+| `GET /admin/providers/{id}/catalog` | Every model the provider offers: context size, tool support, kind, whether it is added (ADR 0020). Cached 10 minutes; `?refresh=true` asks again |
 | `POST /admin/providers/{id}/models`, `PATCH`/`DELETE /admin/models/{id}` | Models, one of them the default |
 | `GET`/`PATCH /admin/settings` | Company instructions (added to the safe defaults, never replacing them), retention days, disabled tools, step limit |
 | `GET /admin/usage?days=7` | Calls, errors by kind, tokens and p50/p95 latency per provider and model |
 
 **Conversations.** `POST /agent/conversations` starts one; `POST /agent/conversations/{id}/messages` with `{"content": "...", "model_id": 3}` answers as Server-Sent Events: `start`, `token`, `tool_call`, `tool_result` (outcome and count, never the data), `proposal`, `notice`, `error` and `done`. `GET /agent/models` lists the models available now. Each person sees and deletes only their own conversations (anyone else gets `not_found`), which are purged after the retention period. They keep the questions, the answers and which tools were used with which arguments, but **not what the tools returned**: permissions can change, and an old conversation must not show data the person can no longer see.
 
-**When a provider fails** ([ADR 0017](docs/adr/0017-provider-failures-explained-not-hidden.md)), the `error` event says what happened (`rate_limited`, `quota_exhausted`, `auth_failed`, `model_unavailable`, `context_too_long`, `provider_unavailable`, `bad_request`), when to retry if known, and which other models are available now. **Nothing switches model on its own**, because that would send company data to a provider nobody chose; `POST /agent/conversations/{id}/retry` answers the last message again with the model the person picks. Short waits are absorbed, a refused key takes the provider out until an administrator replaces it, a used-up daily quota until the next day, and a circuit breaker stops calling a provider for a minute after three failures in a row. Known per-minute and per-day limits can be set per provider so the free tier is not hit at all.
+**When a provider fails** ([ADR 0017](docs/adr/0017-provider-failures-explained-not-hidden.md)), the `error` event says what happened (`rate_limited`, `quota_exhausted`, `auth_failed`, `model_unavailable`, `context_too_long`, `provider_unavailable`, `bad_request`), when to retry if known, and which other models are available now. **Nothing switches model on its own**, because that would send company data to a provider nobody chose; `POST /agent/conversations/{id}/retry` answers the last message again with the model the person picks. Short waits are absorbed, a refused key takes the provider out until an administrator replaces it, a used-up daily quota until the next day, and a circuit breaker stops calling a provider for a minute after three failures in a row. Known limits can be set per provider (requests per minute and per day, and tokens per minute, checked before calling against the last minute's usage) so the free tier is not hit at all (ADR 0020). When the agent runs out of steps it answers with what it found, or says plainly that it could not finish.
 
 What is sent to the provider: the questions and what the tools return, that is, real company data. Choose providers accordingly; a local model (`GATEWAY_LOCAL_PROVIDER_HOSTS`) keeps it in house.
 

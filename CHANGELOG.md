@@ -4,6 +4,25 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-23
+
+Milestone M7.1: what the first tests with real free providers (Groq, Gemini, OpenRouter, NVIDIA, Cloudflare) showed, fixed and measured (ADR 0020).
+
+### Added
+
+- Model catalog: `GET /admin/providers/{id}/catalog` and "Browse models" in the admin panel list every model a provider offers with its context size, whether it takes tools and its kind, models that take tools first, and add one with a click. Cloudflare Workers AI, which has no `/models`, is read from its model search API.
+- Provider templates for Gemini, OpenRouter, NVIDIA NIM, Cloudflare Workers AI (from the account id), Mistral and LM Studio, next to Groq, Cerebras, OpenAI and Ollama. Each says what kind of plan it had when checked and links the provider's limits page.
+- Tokens-per-minute budget per provider, checked before each call against the tokens of the last minute: short waits are absorbed, longer ones answer `rate_limited` with the wait without calling the provider. Token counts are requested in streams, and estimated when a provider does not report them.
+- The provider's short error code of each failed call is kept in `llm_usage.error_code`, and the reason a provider refused a request goes to the server log (never the key).
+
+### Fixed
+
+- When the agent ran out of steps the person could get nothing: the last call now carries the tool results as plain text with no tools offered, and an empty or tool-markup reply becomes an honest "could not finish" message in the person's language.
+- An error event inside a stream is classified from its content instead of always meaning "provider down".
+- Gemini: the `thought_signature` of each tool call is sent back, which Gemini requires.
+- Cloudflare: an assistant turn that only calls tools sends empty text instead of `null`, and number pieces in a stream no longer break the answer.
+- Signing out and signing in as someone else on the same tab no longer lands on the previous person's conversation.
+
 ## [0.7.0] - 2026-11-23
 
 Milestone M7: the web app. People sign in once and use the assistant, the approvals inbox and the admin panel from a browser.

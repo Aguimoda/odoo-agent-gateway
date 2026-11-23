@@ -1,7 +1,7 @@
 {
   "name": "odoo-agent-gateway-web",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Web chat, approvals inbox and admin panel of the Odoo Agent Gateway (ADR 0019).",
   "type": "module",
   "license": "MIT",
