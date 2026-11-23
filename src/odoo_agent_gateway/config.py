@@ -28,6 +28,10 @@ class Settings:
     secret_keys: str | None = None  # master keys for provider keys (ADR 0015)
     local_provider_hosts: frozenset[str] = frozenset()  # http allowed (local models)
     agent_messages_per_minute: int = 10
+    session_idle_minutes: int = 120  # web sessions (ADR 0018)
+    session_hours: int = 12
+    cookie_secure: bool | None = None  # None: Secure when the request came over https
+    web_dir: str | None = None  # built web app (ADR 0019); default: the package's web_dist
 
     def __repr__(self) -> str:
         # The database URL contains a password and the secret keys are secret: never print.
@@ -65,7 +69,24 @@ class Settings:
             values["local_provider_hosts"] = frozenset(h.lower() for h in local_hosts)
         if per_minute := environ.get("GATEWAY_AGENT_MESSAGES_PER_MINUTE"):
             values["agent_messages_per_minute"] = int(per_minute)
+        if idle := environ.get("GATEWAY_SESSION_IDLE_MINUTES"):
+            values["session_idle_minutes"] = int(idle)
+        if hours := environ.get("GATEWAY_SESSION_HOURS"):
+            values["session_hours"] = int(hours)
+        if secure := environ.get("GATEWAY_COOKIE_SECURE"):
+            values["cookie_secure"] = _flag(secure, "GATEWAY_COOKIE_SECURE")
+        if web_dir := environ.get("GATEWAY_WEB_DIR"):
+            values["web_dir"] = web_dir
         return cls(**values)
+
+
+def _flag(value: str, name: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false.")
 
 
 def _split(value: str | None) -> list[str]:

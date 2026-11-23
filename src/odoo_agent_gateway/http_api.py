@@ -27,6 +27,7 @@ HTTP_STATUS = {
     "proposals_unavailable": 503,
     "providers_unavailable": 503,
     "conversations_unavailable": 503,
+    "sessions_unavailable": 503,
 }
 
 

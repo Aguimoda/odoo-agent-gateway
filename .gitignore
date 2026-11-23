@@ -29,3 +29,10 @@ logs/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Built web app (ADR 0019): made by `npm --prefix web run build`
+src/odoo_agent_gateway/web_dist/
+web/node_modules/
+web/coverage/
+test-results/
+playwright-report/

@@ -76,3 +76,23 @@ def test_agent_settings_and_their_defaults():
     assert settings.local_provider_hosts == frozenset({"ollama", "llm-box"})
     assert settings.agent_messages_per_minute == 5
     assert "fake-master-key-for-tests" not in repr(settings)
+
+
+def test_web_session_settings():
+    defaults = Settings.from_env({"ODOO_URL": "http://odoo:8069", "ODOO_DB": "demo"})
+    assert (defaults.session_idle_minutes, defaults.session_hours) == (120, 12)
+    assert defaults.cookie_secure is None and defaults.web_dir is None
+    custom = Settings.from_env(
+        {
+            "ODOO_URL": "http://odoo:8069",
+            "ODOO_DB": "demo",
+            "GATEWAY_SESSION_IDLE_MINUTES": "30",
+            "GATEWAY_SESSION_HOURS": "8",
+            "GATEWAY_COOKIE_SECURE": "true",
+            "GATEWAY_WEB_DIR": "/srv/web",
+        }
+    )
+    assert (custom.session_idle_minutes, custom.session_hours) == (30, 8)
+    assert custom.cookie_secure is True and custom.web_dir == "/srv/web"
+    with pytest.raises(ValueError, match="GATEWAY_COOKIE_SECURE"):
+        Settings.from_env({"ODOO_URL": "x", "ODOO_DB": "demo", "GATEWAY_COOKIE_SECURE": "maybe"})

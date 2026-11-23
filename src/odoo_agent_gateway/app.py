@@ -1,10 +1,14 @@
-"""FastAPI application: `/health`, `/approvals`, `/admin`, `/agent` and MCP at `/mcp`."""
+"""FastAPI application: `/health`, `/approvals`, `/admin`, `/agent`, `/session`, the web
+app at `/app` and MCP at `/mcp`."""
 
 from __future__ import annotations
 
+import inspect
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx2
@@ -32,6 +36,13 @@ from odoo_agent_gateway.ratelimit import RateLimiter
 from odoo_agent_gateway.secretbox import SecretBox
 from odoo_agent_gateway.server import build_mcp_server
 from odoo_agent_gateway.tools import Limits
+from odoo_agent_gateway.web_app import DEFAULT_WEB_DIR as WEB_DIR
+from odoo_agent_gateway.web_app import build_session_router, build_web_router
+from odoo_agent_gateway.web_sessions import (
+    PostgresSessionStorage,
+    WebSessionMiddleware,
+    WebSessions,
+)
 
 
 def create_app(
@@ -70,21 +81,31 @@ def create_app(
         proposal_store = PostgresProposalStore(settings.database_url)
         proposals = ProposalService(proposal_store, limits)
 
-    # Providers and the agent need the database and the master keys (ADR 0015).
+    # Providers, the agent and web sessions need the database and the master keys (ADR 0015).
     provider_store: PostgresProviderStore | None = None
     registry: ProviderRegistry | None = None
     conversation_store: PostgresConversationStore | None = None
+    session_storage: PostgresSessionStorage | None = None
+    web_sessions: WebSessions | None = None
     llm_client = llm_http
     if settings.database_url and settings.secret_keys:
+        box = SecretBox.from_env(settings.secret_keys)
         provider_store = PostgresProviderStore(settings.database_url)
         llm_client = llm_client or httpx2.AsyncClient(follow_redirects=False)
         registry = ProviderRegistry(
             provider_store,
-            SecretBox.from_env(settings.secret_keys),
+            box,
             ChatClient(llm_client),
             local_hosts=settings.local_provider_hosts,
         )
         conversation_store = PostgresConversationStore(settings.database_url)
+        session_storage = PostgresSessionStorage(settings.database_url)
+        web_sessions = WebSessions(
+            session_storage,
+            box,
+            idle=timedelta(minutes=settings.session_idle_minutes),
+            lifetime=timedelta(hours=settings.session_hours),
+        )
 
     # One gateway path, one rate limiter, for every channel.
     gateway = Gateway(provider, audit_sink, RateLimiter(settings.rate_limit_per_minute))
@@ -120,7 +141,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await audit_sink.start()  # applies the schema; fails start-up if the DB is down
-        stores = (knowledge_store, proposal_store, provider_store, conversation_store)
+        stores = (
+            knowledge_store,
+            proposal_store,
+            provider_store,
+            conversation_store,
+            session_storage,
+        )
         for store in stores:
             if store is not None:
                 await store.start()
@@ -144,10 +171,33 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
+    async def tool_names() -> list[str]:
+        listed = mcp_server.list_tools()
+        if inspect.isawaitable(listed):
+            listed = await listed
+        return sorted(tool.name for tool in listed)
+
     app.include_router(build_approval_router(gateway, proposals, settings.allowed_hosts))
     app.include_router(
-        build_admin_router(gateway, registry, settings.admin_group, settings.allowed_hosts)
+        build_admin_router(
+            gateway, registry, settings.admin_group, settings.allowed_hosts, tool_names
+        )
     )
     app.include_router(build_agent_router(gateway, agent, settings.allowed_hosts))
+    app.include_router(
+        build_session_router(
+            gateway,
+            web_sessions,
+            settings.admin_group,
+            settings.allowed_hosts,
+            settings.allowed_origins,
+            settings.cookie_secure,
+        )
+    )
+    app.include_router(build_web_router(Path(settings.web_dir) if settings.web_dir else WEB_DIR))
+    # The session cookie becomes the person's headers for the web APIs only, never /mcp.
+    app.add_middleware(
+        WebSessionMiddleware, sessions=web_sessions, allowed_origins=settings.allowed_origins
+    )
     app.mount("/", mcp_app)  # serves /mcp; mounted last so it does not shadow other routes
     return app
