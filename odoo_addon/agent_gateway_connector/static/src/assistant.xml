@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="agent_gateway_connector.GatewayFrame">
+        <div class="o_agent_gateway_frame">
+            <div t-if="state.error" class="alert alert-warning m-2" role="alert" t-esc="state.error"/>
+            <iframe t-ref="frame" t-att-src="state.src" title="AI assistant"
+                    allow="clipboard-write" referrerpolicy="no-referrer"/>
+        </div>
+    </t>
+
+    <t t-name="agent_gateway_connector.Systray">
+        <div class="o_agent_gateway_systray">
+            <button type="button" class="o_agent_gateway_button btn" t-on-click="toggle"
+                    title="AI assistant" aria-label="AI assistant"
+                    t-att-aria-expanded="state.open ? 'true' : 'false'">
+                <i class="fa fa-comments" role="img" aria-hidden="true"/>
+            </button>
+            <aside t-if="state.open" class="o_agent_gateway_panel" aria-label="AI assistant">
+                <header class="o_agent_gateway_panel_head">
+                    <span>AI assistant</span>
+                    <button type="button" class="btn btn-link" t-on-click="close" title="Close" aria-label="Close">
+                        <i class="fa fa-times" aria-hidden="true"/>
+                    </button>
+                </header>
+                <GatewayFrame page="'chat'" publicUrl="state.publicUrl"/>
+            </aside>
+        </div>
+    </t>
+
+    <t t-name="agent_gateway_connector.EmbedAction">
+        <div class="o_agent_gateway_action">
+            <div t-if="state.message" class="alert alert-info m-3" role="status" t-esc="state.message"/>
+            <GatewayFrame t-if="state.ready" page="page" publicUrl="state.publicUrl"/>
+        </div>
+    </t>
+</templates>

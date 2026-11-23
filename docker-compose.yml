@@ -31,6 +31,11 @@ services:
       - "127.0.0.1:${ODOO_PORT:-8069}:8069"
     volumes:
       - odoo-web-data:/var/lib/odoo
+      # The Odoo module (M8, ADR 0021), read-only.
+      - ./odoo_addon:/mnt/extra-addons:ro
+    extra_hosts:
+      # Lets Odoo's server reach a gateway running on the host (also on Linux).
+      - "host.docker.internal:host-gateway"
 
   # ADR 0004: the gateway has its own database, separate from Odoo's.
   gateway-db:

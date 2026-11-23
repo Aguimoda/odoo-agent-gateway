@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.agent_gateway</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="AI assistant" string="AI assistant" name="agent_gateway_connector"
+                     logo="/agent_gateway_connector/static/description/icon.png">
+                    <block title="Gateway" name="agent_gateway_setting_container">
+                        <setting id="agent_gateway_public_url" string="Address for browsers"
+                                 help="Where people's browsers open the assistant. Odoo and the gateway must be on the same site (for example odoo.example.com and assistant.example.com).">
+                            <field name="agent_gateway_public_url" placeholder="https://assistant.example.com"/>
+                        </setting>
+                        <setting id="agent_gateway_server_url" string="Address for the Odoo server"
+                                 help="Where this Odoo server reaches the gateway to hand over each person's key.">
+                            <field name="agent_gateway_server_url" placeholder="http://gateway:8000"/>
+                        </setting>
+                        <setting id="agent_gateway_key_hours" string="Key duration (hours)"
+                                 help="Each person's assistant key expires after this many hours and a new one is made when needed.">
+                            <field name="agent_gateway_key_hours"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

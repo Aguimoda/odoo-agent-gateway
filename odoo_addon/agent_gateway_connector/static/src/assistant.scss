@@ -1,0 +1,58 @@
+// The side panel sits under Odoo's top bar, on the right, above the page.
+.o_agent_gateway_systray {
+    display: flex;
+    align-items: center;
+}
+
+.o_agent_gateway_button {
+    color: inherit;
+    padding: 0 0.75rem;
+    &[aria-expanded="true"] {
+        background-color: rgba(255, 255, 255, 0.12);
+    }
+}
+
+.o_agent_gateway_panel {
+    position: fixed;
+    top: var(--o-navbar-height, 46px);
+    right: 0;
+    bottom: 0;
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    background-color: $o-view-background-color;
+    color: $o-main-text-color;
+    border-left: 1px solid $border-color;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.o_agent_gateway_panel_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.4rem 0.4rem 1rem;
+    border-bottom: 1px solid $border-color;
+    font-weight: 500;
+}
+
+.o_agent_gateway_frame {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    iframe {
+        flex: 1 1 auto;
+        width: 100%;
+        border: 0;
+    }
+}
+
+.o_agent_gateway_action {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    .o_agent_gateway_frame {
+        height: 100%;
+    }
+}

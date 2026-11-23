@@ -1,5 +1,5 @@
 import { RefreshCw, ServerOff } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { ChatPage } from "./chat/ChatPage";
@@ -13,6 +13,16 @@ import { WorkspaceProvider } from "./workspace";
 
 const AdminPage = lazy(() => import("./admin/AdminPage").then((m) => ({ default: m.AdminPage })));
 const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })));
+
+function AskOdooOnce() {
+  const { t } = useI18n();
+  useEffect(() => askOdooToReopen(), []);
+  return (
+    <div className="center-state" aria-busy>
+      <span className="spinner" aria-label={t("common.loading")} />
+    </div>
+  );
+}
 
 function Gate() {
   const { t } = useI18n();
@@ -40,6 +50,8 @@ function Gate() {
     );
   }
   if (state.status === "signed-out" && isEmbedded()) {
+    // No session yet in this browser: Odoo makes a new one (a ticket failing shows the button).
+    if (state.reason !== "ticket") return <AskOdooOnce />;
     // Inside Odoo nobody types a key: Odoo opens a new session for us.
     return (
       <div className="center-state">

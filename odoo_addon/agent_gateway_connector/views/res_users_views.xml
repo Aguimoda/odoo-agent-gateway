@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- In each person's Preferences: whether the assistant may act for them, and a way out. -->
+    <record id="view_users_form_simple_modif" model="ir.ui.view">
+        <field name="name">res.users.preferences.form.agent_gateway</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form_simple_modif"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="AI assistant" name="agent_gateway">
+                    <group>
+                        <field name="agent_gateway_consent" readonly="1"/>
+                        <field name="agent_gateway_consent_date" readonly="1" invisible="not agent_gateway_consent"/>
+                    </group>
+                    <p class="text-muted">
+                        The assistant works as you, with your rights in Odoo. Revoking deletes its keys at once: any open assistant session stops working.
+                    </p>
+                    <button name="agent_gateway_revoke" type="object" string="Revoke assistant access"
+                            class="btn-secondary" invisible="not agent_gateway_consent"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
