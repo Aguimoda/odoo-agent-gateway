@@ -1,9 +1,9 @@
 """Demo data for the Odoo Agent Gateway. Runs INSIDE Odoo (`odoo shell`), never in the gateway.
 
-Creates two users with different sales permissions, an IT administrator, a few sale orders for each, and an
-API key per user. Safe to run more than once: users, partners and orders are reused;
-a fresh API key is issued on every run. The result is printed as one JSON line that
-`setup_demo.py` reads. `env` is provided by `odoo shell`.
+Creates two users with different sales permissions, an IT administrator, a few sale
+orders for each, and an API key per user. Safe to run more than once: users, partners
+and orders are reused; a fresh API key is issued on every run. The result is printed as
+one JSON line that `setup_demo.py` reads. `env` is provided by `odoo shell`.
 """
 
 import datetime
