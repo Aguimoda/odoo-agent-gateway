@@ -2,6 +2,7 @@ import { Inbox, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, Settings2, S
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 
+import { isEmbedded } from "../embed";
 import { useI18n } from "../i18n";
 import { readPreference, writePreference } from "../preferences";
 import { useSession } from "../session";
@@ -70,6 +71,25 @@ export function Shell({ title, children }: { title?: string; children: ReactNode
   }, [newChat, toggleSidebar]);
 
   const inChat = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
+
+  if (isEmbedded()) {
+    // Odoo's side panel: no conversation list and no account menu, Odoo has its own.
+    return (
+      <div className="shell shell-embedded">
+        <main className="main">
+          <header className="topbar">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={newChat} title={`${t("nav.newChat")} (${modKey}+Shift+O)`}>
+              <SquarePen aria-hidden />
+              {t("nav.newChat")}
+            </button>
+            {title && <div className="topbar-title">{title}</div>}
+          </header>
+          {children}
+        </main>
+        <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="shell" data-collapsed={collapsed} data-mobile-open={mobileOpen}>

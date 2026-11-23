@@ -11,6 +11,16 @@
   grid-template-columns: 0 minmax(0, 1fr);
 }
 
+.shell.shell-embedded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.center-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

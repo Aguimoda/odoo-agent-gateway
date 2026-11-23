@@ -2,10 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { ApiError, del, get, onSignedOut, post } from "./api/client";
 import type { Me } from "./api/types";
+import { initialTicket } from "./embed";
 
 type State =
   | { status: "loading" }
-  | { status: "signed-out"; reason?: "expired" }
+  | { status: "signed-out"; reason?: "expired" | "ticket" }
   | { status: "signed-in"; me: Me }
   | { status: "unreachable" };
 
@@ -25,6 +26,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    if (attempt === 0 && initialTicket) {
+      // Inside Odoo: exchange the one-time ticket for the session cookie (ADR 0021).
+      post<Me>("/session/redeem", { ticket: initialTicket })
+        .then((me) => active && setState({ status: "signed-in", me }))
+        .catch(() => active && setState({ status: "signed-out", reason: "ticket" }));
+      return () => {
+        active = false;
+      };
+    }
     get<Me>("/session")
       .then((me) => active && setState({ status: "signed-in", me }))
       .catch((error: unknown) => {

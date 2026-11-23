@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { ChatPage } from "./chat/ChatPage";
+import { askOdooToReopen, isEmbedded } from "./embed";
 import { I18nProvider, useI18n } from "./i18n";
 import { SignInPage } from "./pages/SignInPage";
 import { SessionProvider, useSession } from "./session";
@@ -38,6 +39,21 @@ function Gate() {
       </div>
     );
   }
+  if (state.status === "signed-out" && isEmbedded()) {
+    // Inside Odoo nobody types a key: Odoo opens a new session for us.
+    return (
+      <div className="center-state">
+        <div>
+          <h1 className="center-title">{t("embed.signedOutTitle")}</h1>
+          <p>{t("embed.signedOutBody")}</p>
+          <button type="button" className="btn btn-primary" onClick={askOdooToReopen}>
+            <RefreshCw aria-hidden />
+            {t("embed.reopen")}
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (state.status === "signed-out") return <SignInPage expired={state.reason === "expired"} />;
 
   return (
@@ -59,7 +75,7 @@ function Gate() {
 
 export function App() {
   return (
-    <BrowserRouter basename="/app">
+    <BrowserRouter basename={isEmbedded() ? "/app/embed" : "/app"}>
       <ThemeProvider>
         <I18nProvider>
           <ToastProvider>
