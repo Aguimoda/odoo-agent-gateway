@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M6 done (version 0.6.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the web chat comes in M7 and the public deployment in M9.
+> **Status: milestone M7 done (version 0.7.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Since M7 people use it from a web app: chat, approvals inbox and admin panel, with the Odoo key kept on the server. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the Odoo module comes in M8 and the public deployment in M9.
 
 ## The problem
 
@@ -63,7 +63,7 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M4 | Write proposals with four-eyes approval | Done |
 | M5 | Retrieval evaluation in CI, calibrated threshold, traces, usage report, real-agent harness | Done |
 | M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | Done |
-| M7 | Web chat, admin panel and approval inbox | Planned |
+| M7 | Web chat, admin panel and approval inbox | Done |
 | M8 | Odoo module: the chat and the inbox inside Odoo | Planned |
 | M9 | Cloud deployment with a public demo, and a short video | Planned |
 
@@ -71,7 +71,7 @@ The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPE
 
 ## Run it locally
 
-Requirements: Docker with Compose, and Python 3.11 or newer.
+Requirements: Docker with Compose, Python 3.11 or newer, and Node.js 22.12 or newer for the web app.
 
 ```bash
 cp .env.example .env               # then replace every placeholder password
@@ -107,7 +107,7 @@ Authorization: Bearer <Ana's Odoo API key>
 
 The gateway stores no credentials; Odoo checks them on every call.
 
-Optional settings: `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60 per login), `GATEWAY_MODEL_CACHE` (default `.cache/models`), `GATEWAY_KNOWLEDGE_MIN_SCORE` (default 0.42, calibrated), `GATEWAY_TRACES` (`none`, `console` or `otlp`), `GATEWAY_ALLOWED_MODELS` (comma-separated, default contacts, products and sales), `GATEWAY_ALLOWED_HOSTS` and `GATEWAY_ALLOWED_ORIGINS` (default local only), `GATEWAY_HOST` and `GATEWAY_PORT`.
+Optional settings: `GATEWAY_COOKIE_SECURE` (force the `Secure` cookie flag behind a TLS proxy), `GATEWAY_WEB_DIR` (another build of the web app), `GATEWAY_RATE_LIMIT_PER_MINUTE` (default 60 per login), `GATEWAY_MODEL_CACHE` (default `.cache/models`), `GATEWAY_KNOWLEDGE_MIN_SCORE` (default 0.42, calibrated), `GATEWAY_TRACES` (`none`, `console` or `otlp`), `GATEWAY_ALLOWED_MODELS` (comma-separated, default contacts, products and sales), `GATEWAY_ALLOWED_HOSTS` and `GATEWAY_ALLOWED_ORIGINS` (default local only), `GATEWAY_HOST` and `GATEWAY_PORT`.
 
 ### Audit log
 
@@ -132,7 +132,7 @@ Possible outcomes: `applied`, `conflict` (the record changed after the proposal)
 
 ### The assistant
 
-The gateway also runs the agent itself ([ADR 0016](docs/adr/0016-agent-service-through-the-mcp-endpoint.md)): a person sends a message and the answer streams back while it is written, with the agent using the tools **as that person**. Its tool calls go through the gateway's own `/mcp` endpoint in process, so they are rate-limited, permission-checked and audited exactly like an external agent's. The web chat and admin screens come in M7; M6 is the API underneath.
+The gateway also runs the agent itself ([ADR 0016](docs/adr/0016-agent-service-through-the-mcp-endpoint.md)): a person sends a message and the answer streams back while it is written, with the agent using the tools **as that person**. Its tool calls go through the gateway's own `/mcp` endpoint in process, so they are rate-limited, permission-checked and audited exactly like an external agent's. The web app below is built on this API.
 
 It is on when `GATEWAY_SECRET_KEYS` is set. `setup_demo.py` writes one to `.env.demo-keys` and keeps it across runs; for a server, generate one with `python -m odoo_agent_gateway.secretbox`.
 
@@ -172,14 +172,50 @@ What is sent to the provider: the questions and what the tools return, that is, 
 
 Settings: `GATEWAY_SECRET_KEYS` (comma-separated master keys; the first encrypts, the rest still decrypt, for rotation), `GATEWAY_ADMIN_GROUP`, `GATEWAY_LOCAL_PROVIDER_HOSTS` (hosts allowed over plain `http`, besides loopback), `GATEWAY_AGENT_MESSAGES_PER_MINUTE` (default 10 per person).
 
+### The web app
+
+![The chat answering as Ana, with the tool it used in Odoo](docs/images/chat.png)
+
+The gateway serves a web app at **http://127.0.0.1:8000/app/** ([ADR 0019](docs/adr/0019-web-app-served-by-the-gateway.md)): a chat with streamed answers, an approvals inbox and an admin panel, in Spanish and English, light and dark, usable on a phone. It is built from `web/` (React 19, TypeScript, Vite):
+
+```bash
+npm --prefix web ci
+npm --prefix web run build      # writes src/odoo_agent_gateway/web_dist/, served at /app
+```
+
+**Signing in** ([ADR 0018](docs/adr/0018-web-sessions-keep-the-key-on-the-server.md)). A person types their Odoo login and API key once. The gateway checks them with Odoo and keeps the key **encrypted on the server**; the browser only gets an `HttpOnly`, `SameSite=Strict` cookie that no script can read. Every request still goes through Odoo with the person's own key, so revoking the key in Odoo ends the session at once. A change sent with the cookie from another site is refused before anything runs, and `/mcp` never accepts the cookie. Sessions end after 2 hours idle and at most after 12 hours (`GATEWAY_SESSION_IDLE_MINUTES`, `GATEWAY_SESSION_HOURS`). Inside Odoo (M8) this step goes away.
+
+| Screen | What it shows |
+|---|---|
+| Chat | Conversations, the answer as it is written, and under it what the agent did **as you**: each tool, its arguments, whether it worked and how many results. Proposed changes say they await approval. A provider failure explains itself, counts down to the retry and offers the other models as buttons |
+| Approvals | Changes proposed on behalf of other people, field by field, current value against proposed, approve or reject with a note; and your own proposals with what happened to them |
+| Admin | Only for members of the Odoo admin group: providers with their health, keys that are written and never shown again, a connection test that lists the provider's models, agent settings with the real tool list, and usage per model |
+
+![A provider at its per-minute limit, with the other model offered](docs/images/failure.png)
+
+The page has a strict Content Security Policy (only its own scripts and styles, no inline code, no framing), bundles its fonts and icons, and calls no third party. Model output is rendered as Markdown without HTML.
+
+**Try it without a provider account.** `scripts/demo/fake_llm.py` is a scripted, OpenAI-compatible model (no AI, deterministic): it picks one tool from the question and writes a short answer from what the tool returned. Register `http://127.0.0.1:8090/good/v1` (any key) in the admin panel as Carmen; `/limited/v1` always answers "rate limited" and `/down/v1` is always down, to see the failure screens.
+
+```bash
+.venv/bin/python scripts/demo/fake_llm.py     # then sign in at /app as carmen, ana or luis
+```
+
+For development, `npm --prefix web run dev` serves the app with hot reload on port 5173 and passes the API through to a gateway on port 8000.
+
+![The approvals inbox: current value against the proposed one](docs/images/approvals.png)
+
 ### Tests
 
 ```bash
 .venv/bin/pytest                  # unit tests, no Odoo needed
 .venv/bin/pytest -m integration   # acceptance scenarios against the demo database and audit DB
+npm --prefix web test             # web app: event stream parser, chat state, translations
 ```
 
-CI runs both on every push. The integration job starts Odoo 18 in Docker, creates the demo data, builds the knowledge index and runs every scenario, including a small retrieval evaluation (six Spanish and English questions whose handbook page must rank in the top three). It fails, rather than skips, if anything is missing.
+The browser tests are part of the integration run. They need the built app and Chromium: `pip install -e ".[e2e]"` and `python -m playwright install chromium`; they sign in as Ana, Luis and Carmen, chat, switch model after a rate limit and approve a change, against real Odoo and a scripted model.
+
+CI runs all of them on every push, plus a web job (type check, lint, tests, build). The integration job starts Odoo 18 in Docker, creates the demo data, builds the knowledge index and runs every scenario, including a small retrieval evaluation (six Spanish and English questions whose handbook page must rank in the top three). It fails, rather than skips, if anything is missing.
 
 All published ports are bound to `127.0.0.1`.
 
@@ -230,6 +266,7 @@ No miss is a safety failure. Asked for "referencias de cliente", the agent liste
 
 ```
 docs/              specification, tool catalogue, milestone specs, decision records (ADR)
+web/               the web app: React, TypeScript, Vite (ADR 0019)
 scripts/demo/      reproducible demo data for Odoo, and the demo handbook
 evals/             labelled retrieval set, agent scenarios and committed results
 src/odoo_agent_gateway/
@@ -249,6 +286,8 @@ src/odoo_agent_gateway/
   admin.py         the /admin API, decided by an Odoo group (ADR 0015)
   secretbox.py     AES-GCM encryption of provider keys (ADR 0015)
   provider_store.py, conversation_store.py  their tables
+  web_sessions.py  sign-in sessions: key encrypted on the server, cookie only (ADR 0018)
+  web_app.py       /session and the web app at /app, with its security headers (ADR 0019)
   gateway.py       the shared path: limit, credentials, action, audit
   tracing.py       OpenTelemetry spans, off by default (ADR 0014)
   report.py        usage report from the audit log
@@ -257,9 +296,10 @@ src/odoo_agent_gateway/
   embeddings.py    local multilingual embeddings (ADR 0010)
   indexer.py, index.py  offline indexer and its command
   migrations/      SQL for the gateway database
-  app.py           FastAPI app: /health, /approvals, /admin, /agent and /mcp (ADR 0007)
+  app.py           FastAPI app: /health, /session, /app, /approvals, /admin, /agent and /mcp
 tests/unit/        fast tests, no Odoo needed
 tests/integration/ acceptance scenarios against real Odoo
+tests/e2e/         the web app in a real browser (Playwright)
 .github/           CI workflow
 ```
 

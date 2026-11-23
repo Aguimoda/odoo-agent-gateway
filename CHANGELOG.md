@@ -4,6 +4,25 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23
+
+Milestone M7: the web app. People sign in once and use the assistant, the approvals inbox and the admin panel from a browser.
+
+### Added
+
+- Web app at `/app`, built from `web/` with React 19, TypeScript and Vite and served by the gateway from the same origin (ADR 0019): chat with streamed Markdown answers and the trail of tools used as the person, proposals, notices, provider failures with a countdown and the other models as buttons; approvals inbox with current against proposed values; admin panel for providers, models, connection tests, agent settings and usage. Spanish and English, light and dark, keyboard shortcuts, accessible, works on a phone.
+- Web sessions (ADR 0018): `POST`/`GET`/`DELETE /session`. The Odoo key is checked by Odoo, kept encrypted on the server and bound to the session id; the browser only holds an `HttpOnly`, `SameSite=Strict` cookie. Cookie requests that change something must come from the gateway's own origin, `/mcp` never accepts the cookie, and sessions expire after 2 hours idle or 12 hours.
+- Strict Content Security Policy and security headers on the app; no inline scripts or styles, no third-party requests.
+- `GET /approvals/mine`: your own proposals and what happened to them.
+- The admin settings list the real tool names, for disabling tools from the panel.
+- A conversation started without a title takes it from its first message; empty conversations are not listed.
+- `scripts/demo/fake_llm.py`: a scripted OpenAI-compatible model for demos and browser tests.
+- Browser tests with Playwright against real Odoo (`pip install -e ".[e2e]"`), and a CI job that type-checks, lints, tests and builds the web app.
+
+### Fixed
+
+- The approvals inbox read the 200 oldest pending proposals of any kind and filtered them afterwards, so proposals on other models (or by the approver) could crowd out newer ones that should have been shown. The filter now runs in SQL before the limit.
+
 ## [0.6.0] - 2026-11-23
 
 Milestone M6: the agent service and its providers. The roadmap now follows the product plan (`docs/PRODUCT-PLAN.md`): M7 web chat and admin panel, M8 Odoo module, M9 deployment.
