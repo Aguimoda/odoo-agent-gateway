@@ -307,10 +307,12 @@ function ProviderEditor({
 function ModelsSection({
   provider,
   offered,
+  anyDefault,
   onChange,
 }: {
   provider: Provider;
   offered: string[] | null;
+  anyDefault: boolean; // the default model is one for the whole gateway
   onChange: (provider: Provider) => void;
 }) {
   const { t } = useI18n();
@@ -336,7 +338,7 @@ function ModelsSection({
       post<Provider>(`/admin/providers/${provider.id}/models`, {
         name: modelName,
         label: modelLabel || null,
-        is_default: !provider.models.some((m) => m.is_default),
+        is_default: !anyDefault,
       }),
     ).then(() => {
       setName("");
@@ -458,11 +460,13 @@ function ModelsSection({
 
 function ProviderPanel({
   provider,
+  anyDefault,
   onChange,
   onEdit,
   onDelete,
 }: {
   provider: Provider;
+  anyDefault: boolean;
   onChange: (provider: Provider) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -556,8 +560,8 @@ function ProviderPanel({
       )}
       <div className="panel-divider" />
       <div className="panel-body">
-        <ModelsSection provider={provider} offered={test?.ok ? (test.models ?? []) : null} onChange={onChange} />
-        {browsing && <CatalogView provider={provider} onChange={onChange} onClose={() => setBrowsing(false)} />}
+        <ModelsSection provider={provider} offered={test?.ok ? (test.models ?? []) : null} anyDefault={anyDefault} onChange={onChange} />
+        {browsing && <CatalogView provider={provider} anyDefault={anyDefault} onChange={onChange} onClose={() => setBrowsing(false)} />}
       </div>
     </article>
   );
@@ -597,12 +601,15 @@ export function ProvidersTab() {
     [refreshModels],
   );
 
+  // One default model for the whole gateway: a new model never takes it from another provider.
+  const anyDefault = (providers ?? []).some((p) => p.models.some((m) => m.is_default));
+
   const saved = async (provider: Provider, suggestedModel?: string) => {
     setEditing(null);
     replace(provider);
     if (suggestedModel && provider.models.length === 0) {
       try {
-        replace(await post<Provider>(`/admin/providers/${provider.id}/models`, { name: suggestedModel, is_default: true }));
+        replace(await post<Provider>(`/admin/providers/${provider.id}/models`, { name: suggestedModel, is_default: !anyDefault }));
       } catch {
         // the admin can add a model by hand
       }
@@ -665,6 +672,7 @@ export function ProvidersTab() {
             <ProviderPanel
               key={provider.id}
               provider={provider}
+              anyDefault={anyDefault}
               onChange={replace}
               onEdit={() => setEditing(provider)}
               onDelete={() => setDeleting(provider)}

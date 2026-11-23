@@ -18,10 +18,12 @@ function ToolsBadge({ tools }: { tools: boolean | null }) {
 /** Everything the provider offers, to add models with one click (ADR 0020). */
 export function CatalogView({
   provider,
+  anyDefault,
   onChange,
   onClose,
 }: {
   provider: Provider;
+  anyDefault: boolean;
   onChange: (provider: Provider) => void;
   onClose: () => void;
 }) {
@@ -70,7 +72,7 @@ export function CatalogView({
       onChange(
         await post<Provider>(`/admin/providers/${provider.id}/models`, {
           name: model.id,
-          is_default: !provider.models.some((m) => m.is_default),
+          is_default: !anyDefault,
         }),
       );
     } catch (failure) {

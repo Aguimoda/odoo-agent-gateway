@@ -227,7 +227,18 @@ def test_duplicate_names_conflict(gateway, demo, provider):
     assert response.status_code == 409
 
 
-def test_models_test_connection_and_default(gateway, demo, provider):
+@pytest.fixture
+def keep_default(gateway, demo):
+    """Tests that set a default model must leave the demo's own default as it was."""
+    carmen = headers(demo, "carmen")
+    listing = gateway.get("/admin/providers", headers=carmen).json()["providers"]
+    before = next((m["id"] for p in listing for m in p["models"] if m["is_default"]), None)
+    yield
+    if before is not None:
+        gateway.patch(f"/admin/models/{before}", json={"is_default": True}, headers=carmen)
+
+
+def test_models_test_connection_and_default(gateway, demo, provider, keep_default):
     carmen = headers(demo, "carmen")
     tested = gateway.post(f"/admin/providers/{provider['id']}/test", headers=carmen)
     assert tested.json() == {"ok": True, "models": ["model-a", "model-b", "text-embedding-small"]}
