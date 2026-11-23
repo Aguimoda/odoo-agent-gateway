@@ -74,10 +74,15 @@ def gateway(demo) -> str:
         model_cache=os.environ.get("GATEWAY_MODEL_CACHE", ".cache/models"),
         secret_keys=new_master_key(),
         agent_messages_per_minute=1000,
+        # Odoo (M8) frames the app and, from its container, hands keys over.
+        allowed_hosts=("127.0.0.1:*", "localhost:*", "host.docker.internal:*"),
+        embed_origins=(demo["ODOO_URL"].rstrip("/"),),
     )
     port = free_port()
+    # On Linux, Odoo's container reaches the host's bridge address, not its loopback.
+    bind = os.environ.get("E2E_GATEWAY_BIND", "127.0.0.1")
     server = uvicorn.Server(
-        uvicorn.Config(create_app(settings), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(create_app(settings), host=bind, port=port, log_level="warning")
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -343,3 +348,162 @@ def test_carmen_browses_a_providers_models_and_adds_one(page, demo, models):
     other.get_by_role("button", name="Añadir: scripted-large").click()
     expect(other).to_contain_text("Añadido")
     assert page.csp_errors == []
+
+
+# -- M8: the assistant inside Odoo (ADR 0021) -------------------------------------------------
+
+KEY_NAME = "Odoo Agent Gateway (assistant)"
+
+
+def odoo_rpc(demo, login: str, secret: str, model: str, method: str, args, kwargs=None):
+    """JSON-RPC to the demo Odoo as someone (password or API key)."""
+    import urllib.request
+
+    def call(service, rpc_method, *rpc_args):
+        body = {
+            "jsonrpc": "2.0",
+            "method": "call",
+            "params": {"service": service, "method": rpc_method, "args": list(rpc_args)},
+        }
+        request = urllib.request.Request(
+            demo["ODOO_URL"] + "/jsonrpc",
+            json.dumps(body).encode(),
+            {"Content-Type": "application/json"},
+        )
+        answer = json.load(urllib.request.urlopen(request))
+        if "error" in answer:
+            raise AssertionError(answer["error"]["data"]["message"])
+        return answer["result"]
+
+    uid = call("common", "authenticate", demo["ODOO_DB"], login, secret, {})
+    return uid, call(
+        "object", "execute_kw", demo["ODOO_DB"], uid, secret, model, method, args, kwargs or {}
+    )
+
+
+def as_admin(demo, model, method, args, kwargs=None):
+    return odoo_rpc(demo, "admin", demo["DEMO_ADMIN_PASSWORD"], model, method, args, kwargs)[1]
+
+
+def as_person(demo, who, model, method, args, kwargs=None):
+    login, key = demo[f"DEMO_{who.upper()}_LOGIN"], demo[f"DEMO_{who.upper()}_API_KEY"]
+    return odoo_rpc(demo, login, key, model, method, args, kwargs)
+
+
+@pytest.fixture(scope="module")
+def odoo_assistant(demo, gateway):
+    """Point the demo Odoo's module at this test gateway; put its settings back afterwards."""
+    if "DEMO_ANA_PASSWORD" not in demo:
+        missing("Demo data predates M8: run scripts/demo/setup_demo.py again.")
+    keys = ("public_url", "server_url")
+    before = {
+        k: as_admin(demo, "ir.config_parameter", "get_param", [f"agent_gateway_connector.{k}"])
+        for k in keys
+    }
+    port = gateway.rsplit(":", 1)[1]
+    as_admin(
+        demo, "ir.config_parameter", "set_param", ["agent_gateway_connector.public_url", gateway]
+    )
+    as_admin(
+        demo,
+        "ir.config_parameter",
+        "set_param",
+        ["agent_gateway_connector.server_url", f"http://host.docker.internal:{port}"],
+    )
+    for who in ("ana", "luis"):  # start from "never used the assistant"
+        uid, _ = as_person(demo, who, "res.users", "agent_gateway_status", [])
+        as_person(demo, who, "res.users", "agent_gateway_revoke", [[uid]])
+    yield
+    for who in ("ana", "luis"):
+        uid, _ = as_person(demo, who, "res.users", "agent_gateway_status", [])
+        as_person(demo, who, "res.users", "agent_gateway_revoke", [[uid]])
+    for key, value in before.items():
+        as_admin(
+            demo,
+            "ir.config_parameter",
+            "set_param",
+            [f"agent_gateway_connector.{key}", value or ""],
+        )
+
+
+def odoo_sign_in(page, demo, who: str) -> None:
+    page.goto(demo["ODOO_URL"] + "/web/login?db=" + demo["ODOO_DB"])
+    page.get_by_label("Email").fill(demo[f"DEMO_{who.upper()}_LOGIN"])
+    page.get_by_label("Password").fill(demo[f"DEMO_{who.upper()}_PASSWORD"])
+    page.get_by_role("button", name="Log in").click()
+    page.get_by_role("button", name="AI assistant").wait_for(timeout=30_000)
+
+
+def assistant_keys(demo, who: str) -> list[dict]:
+    uid, _ = as_person(demo, who, "res.users", "agent_gateway_status", [])
+    return as_admin(
+        demo,
+        "res.users.apikeys",
+        "search_read",
+        [[["user_id", "=", uid], ["name", "=", KEY_NAME]]],
+        {"fields": ["scope", "expiration_date"]},
+    )
+
+
+def test_ana_uses_the_assistant_inside_odoo_and_revokes_it(page, demo, models, odoo_assistant):
+    """Scenarios: primer uso con consentimiento; chat dentro de Odoo; retirar el acceso."""
+    from playwright.sync_api import expect
+
+    odoo_sign_in(page, demo, "ana")
+    page.get_by_role("button", name="AI assistant").click()
+    dialog = page.get_by_role("dialog")
+    expect(dialog).to_contain_text("Allow the assistant to act on your behalf?")
+    assert assistant_keys(demo, "ana") == []  # nothing before consent
+    dialog.get_by_role("button", name="Allow").click()
+
+    panel = page.frame_locator(".o_agent_gateway_panel iframe")
+    expect(panel.get_by_role("heading", name="¿En qué te ayudo, Ana")).to_be_visible(timeout=30_000)
+    (key,) = assistant_keys(demo, "ana")
+    assert key["scope"] == "rpc"
+    frame = next(f for f in page.frames if "/app/embed/" in f.url)
+    assert "ticket=" not in frame.url  # the ticket left the address at once
+
+    panel.get_by_label("Modelo").select_option(
+        label=f"{models['good']} · e2e-good-{models['good'][-6:]}"
+    )
+    box = panel.get_by_label("Escribe un mensaje…")
+    box.fill("¿Cuál es el plazo de envío?")
+    box.press("Enter")
+    expect(panel.get_by_role("button", name="Usó 1 herramienta como ana")).to_be_visible(
+        timeout=30_000
+    )
+
+    uid, _ = as_person(demo, "ana", "res.users", "agent_gateway_status", [])
+    as_person(demo, "ana", "res.users", "agent_gateway_revoke", [[uid]])
+    assert assistant_keys(demo, "ana") == []
+    # The panel's gateway session died with the key, at once.
+    assert page.request.get(gateway_url(page) + "/session").status == 401
+    # Opening the panel again asks for consent again; nothing opens without it.
+    page.get_by_role("button", name="AI assistant").click()  # closes the panel
+    page.get_by_role("button", name="AI assistant").click()
+    expect(page.get_by_role("dialog")).to_contain_text("Allow the assistant to act on your behalf?")
+    page.get_by_role("dialog").get_by_role("button", name="Not now").click()
+    expect(page.locator(".o_agent_gateway_panel")).to_have_count(0)
+    assert assistant_keys(demo, "ana") == []
+
+
+def gateway_url(page) -> str:
+    frame = next(f for f in page.frames if "/app/embed/" in f.url)
+    return frame.url.split("/app/", 1)[0]
+
+
+def test_luis_opens_the_inbox_from_odoos_menu_and_ana_has_no_administration(
+    page, demo, models, odoo_assistant
+):
+    """Scenario: bandeja y administración desde los menús de Odoo."""
+    from playwright.sync_api import expect
+
+    odoo_sign_in(page, demo, "luis")
+    page.goto(demo["ODOO_URL"] + "/odoo/action-agent_gateway_connector.action_assistant_approvals")
+    page.get_by_role("dialog").get_by_role("button", name="Allow").click()
+    inbox = page.frame_locator(".o_agent_gateway_action iframe")
+    expect(inbox.get_by_text("Aprobaciones").first).to_be_visible(timeout=30_000)
+
+    menus = as_person(demo, "ana", "ir.ui.menu", "load_menus", [False])[1]
+    names = {menu["name"] for menu in menus.values() if isinstance(menu, dict) and "name" in menu}
+    assert "Approvals" in names and "Administration" not in names

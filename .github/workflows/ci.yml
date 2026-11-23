@@ -66,6 +66,8 @@ jobs:
     timeout-minutes: 25
     env:
       GATEWAY_MODEL_CACHE: ${{ github.workspace }}/.cache/models
+      # Odoo's container reaches the browser tests' gateway through the Docker bridge (M8).
+      E2E_GATEWAY_BIND: 0.0.0.0
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -99,6 +101,11 @@ jobs:
           http://127.0.0.1:8069/web/login
       - name: Create demo data (Ana, Luis, Carmen, hostile records)
         run: python scripts/demo/setup_demo.py
+      - name: Odoo module tests, inside Odoo (agent_gateway_connector)
+        run: |
+          out=$(docker compose run --rm -T odoo odoo -d addon_test -i agent_gateway_connector             --without-demo=all --test-enable --test-tags /agent_gateway_connector             --stop-after-init --no-http 2>&1)
+          echo "$out" | grep -E "tests when|ERROR|FAIL" || true
+          echo "$out" | grep -qE "0 failed, 0 error\(s\) of [1-9][0-9]* tests"
       - name: Cache the embedding model
         uses: actions/cache@v6
         with:

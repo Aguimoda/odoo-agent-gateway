@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { isEmbedded } from "./embed";
 import { readPreference, writePreference } from "./preferences";
 
 export type ThemeChoice = "system" | "light" | "dark";
@@ -19,7 +20,8 @@ function systemDark(): boolean {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setChoiceState] = useState<ThemeChoice>(() => {
     const saved = readPreference("theme");
-    return saved === "light" || saved === "dark" ? saved : "system";
+    if (saved === "light" || saved === "dark") return saved;
+    return isEmbedded() ? "light" : "system"; // inside Odoo, match Odoo, which is light
   });
   const [prefersDark, setPrefersDark] = useState(systemDark);
 
