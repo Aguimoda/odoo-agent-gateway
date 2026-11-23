@@ -77,6 +77,7 @@ def build_admin_router(
     registry: ProviderRegistry | None,
     admin_group: str,
     allowed_hosts: tuple[str, ...],
+    tool_names: Callable[[], Awaitable[list[str]]] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -171,7 +172,8 @@ def build_admin_router(
     @router.get("/settings")
     async def get_settings(request: Request) -> Any:
         async def action(r: ProviderRegistry, s: OdooSession) -> Any:
-            return (await r.store.settings()).public()
+            tools = await tool_names() if tool_names else []
+            return {**(await r.store.settings()).public(), "tools": tools}
 
         return await respond(request, "admin.settings", {}, action)
 
@@ -186,7 +188,8 @@ def build_admin_router(
                 data["instructions"] = data["instructions"].strip()
             if not data:
                 raise InvalidRequest("Send at least one setting to change.")
-            return (await r.store.update_settings(data, s.login)).public()
+            tools = await tool_names() if tool_names else []
+            return {**(await r.store.update_settings(data, s.login)).public(), "tools": tools}
 
         # Instructions can be long: the audit keeps whether they changed, not the text.
         audited = {k: ("(changed)" if k == "instructions" else v) for k, v in data.items()}

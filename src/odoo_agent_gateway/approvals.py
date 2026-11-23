@@ -50,6 +50,16 @@ def build_approval_router(
             lambda session: proposals.pending_for(session, limit),
         )
 
+    @router.get("/mine")
+    async def mine(request: Request, status: str | None = None, limit: int | None = None) -> Any:
+        """Your own proposals and what happened to them."""
+        return await respond(
+            request,
+            "approvals.mine",
+            {"status": status, "limit": limit},
+            lambda session: proposals.list_mine(session, status, limit),
+        )
+
     @router.post("/{proposal_id}/approve")
     async def approve(proposal_id: int, request: Request, body: DecisionBody | None = None) -> Any:
         """Approve a proposal by someone else; the change runs in Odoo with your rights."""

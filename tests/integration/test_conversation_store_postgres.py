@@ -59,6 +59,10 @@ async def test_history_in_order_with_tools_but_no_results(store):
     )
     messages = await store.messages(str(chat.id), ANA)
     assert [m.role for m in messages] == ["user", "assistant"]
+    empty = await store.create(ANA, "ana", "")
+    listed = [c.id for c in await store.list_for(ANA)]
+    assert chat.id in listed and empty.id not in listed  # nothing said yet: not listed
+    await store.delete(str(empty.id), ANA)
     assert messages[1].tools == tools and messages[1].model == "groq/openai/gpt-oss-120b"
     assert (await store.list_for(ANA))[0].id == chat.id
     await store.delete(str(chat.id), ANA)

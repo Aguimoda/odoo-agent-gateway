@@ -334,6 +334,8 @@ class AgentService:
                 raise InvalidRequest(f"Write a message of 1 to {MESSAGE_LIMIT} characters.")
             earlier = messages
             await self.conversations.add_message(conversation, "user", user_text)
+            if not messages:
+                await self.conversations.title_if_untitled(conversation, user_text)
         history = [
             {"role": m.role, "content": m.content}
             for m in earlier

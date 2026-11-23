@@ -47,6 +47,10 @@ class StubProposals:
         self.calls.append(("pending", session.uid, limit))
         return {"proposals": [{"proposal_id": 1}]}
 
+    async def list_mine(self, session, status=None, limit=None):
+        self.calls.append(("mine", session.uid, status, limit))
+        return {"proposals": [{"proposal_id": 2, "status": "pending"}]}
+
     async def approve(self, session, proposal_id, note):
         return await self._answer("approve", session.uid, proposal_id, note)
 
@@ -94,6 +98,7 @@ def test_pending_and_reject_work_too():
         rejected = api.post("/approvals/1/reject", json={"note": "No."}, headers=LUIS)
 
     assert pending.json() == {"proposals": [{"proposal_id": 1}]}
+    assert proposals.calls[0] == ("pending", 9, None)
     assert rejected.status_code == 200
     assert proposals.calls[-1] == ("reject", 9, 1, "No.")
 
@@ -177,3 +182,14 @@ def test_host_patterns(host, allowed):
     patterns = ("127.0.0.1:*", "localhost:*", "gateway.example.com")
 
     assert host_allowed(host, patterns) is allowed
+
+
+def test_mine_lists_the_callers_own_proposals():
+    proposals, audit = StubProposals(), MemoryAuditSink()
+
+    with client(proposals, audit) as api:
+        response = api.get("/approvals/mine?status=pending&limit=5", headers=LUIS)
+
+    assert response.json()["proposals"][0]["proposal_id"] == 2
+    assert proposals.calls == [("mine", 9, "pending", 5)]
+    assert audit.events[0].tool == "approvals.mine"

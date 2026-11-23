@@ -18,6 +18,7 @@ from odoo_agent_gateway.migrations import apply_migrations
 from odoo_agent_gateway.odoo import OdooError, RecordNotFound
 
 TITLE_LENGTH = 80
+DEFAULT_TITLE = "New conversation"
 
 
 class ConversationsUnavailable(OdooError):
@@ -125,7 +126,7 @@ class PostgresConversationStore:
             f"returning {_CONVERSATION}",
             owner_uid,
             owner_login,
-            title_from(title) or "New conversation",
+            title_from(title) or DEFAULT_TITLE,
         )
         return Conversation(**dict(row))
 
@@ -141,7 +142,8 @@ class PostgresConversationStore:
 
     async def list_for(self, owner_uid: int, limit: int = 50) -> list[Conversation]:
         rows = await self._ready().fetch(
-            f"select {_CONVERSATION} from conversations where owner_uid = $1 "
+            f"select {_CONVERSATION} from conversations c where owner_uid = $1 "
+            "and exists (select 1 from conversation_messages m where m.conversation_id = c.id) "
             "order by updated_at desc, id limit $2",
             owner_uid,
             limit,
@@ -190,6 +192,15 @@ class PostgresConversationStore:
                 "update conversations set updated_at = now() where id = $1", conversation.id
             )
         return _message(row)
+
+    async def title_if_untitled(self, conversation: Conversation, text: str) -> None:
+        """Name a conversation created without a title after its first message."""
+        await self._ready().execute(
+            "update conversations set title = $2 where id = $1 and title = $3",
+            conversation.id,
+            title_from(text),
+            DEFAULT_TITLE,
+        )
 
     async def delete(self, conversation_id: str, owner_uid: int) -> bool:
         result = await self._ready().execute(

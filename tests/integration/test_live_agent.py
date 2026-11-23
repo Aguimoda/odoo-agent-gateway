@@ -141,9 +141,20 @@ def events(response) -> list[tuple[str, dict]]:
     return parsed
 
 
+CREATED: list[tuple[str, str]] = []  # (who, conversation id), deleted after the module
+
+
+@pytest.fixture(scope="module", autouse=True)
+def clean_up_conversations(gateway, demo):
+    yield
+    for who, conversation in CREATED:
+        gateway.delete(f"/agent/conversations/{conversation}", headers=headers(demo, who))
+
+
 def new_conversation(gateway, demo, who="ana") -> str:
     response = gateway.post("/agent/conversations", json={}, headers=headers(demo, who))
     assert response.status_code == 200, response.text
+    CREATED.append((who, response.json()["id"]))
     return response.json()["id"]
 
 
@@ -203,6 +214,7 @@ def test_streamed_answer_with_tools_run_as_the_person(gateway, demo, models):
 
     # Stored: question, answer, tool name and arguments. Not stored: what the tool returned.
     stored = gateway.get(f"/agent/conversations/{conversation}", headers=headers(demo, "ana"))
+    assert stored.json()["title"] == "¿Cuál es el plazo de envío?"  # named by its first message
     messages = stored.json()["messages"]
     assert [m["role"] for m in messages] == ["user", "assistant"]
     assert messages[1]["content"] == ANSWER
