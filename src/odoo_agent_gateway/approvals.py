@@ -30,6 +30,8 @@ HTTP_STATUS = {
     "odoo_unavailable": 502,
     "audit_unavailable": 503,
     "proposals_unavailable": 503,
+    "providers_unavailable": 503,
+    "model_unavailable": 409,
 }
 
 

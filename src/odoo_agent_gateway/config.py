@@ -24,9 +24,13 @@ class Settings:
     model_cache: str = ".cache/models"
     knowledge_min_score: float = 0.42  # see knowledge.DEFAULT_MIN_SCORE
     traces: str = "none"  # none, console or otlp (ADR 0014)
+    admin_group: str = "base.group_system"  # Odoo group that administers (ADR 0015)
+    secret_keys: str | None = None  # master keys for provider keys (ADR 0015)
+    local_provider_hosts: frozenset[str] = frozenset()  # http allowed (local models)
+    agent_messages_per_minute: int = 10
 
     def __repr__(self) -> str:
-        # The database URL contains a password: never print it.
+        # The database URL contains a password and the secret keys are secret: never print.
         return f"Settings(odoo_url={self.odoo_url!r}, odoo_db={self.odoo_db!r})"
 
     @classmethod
@@ -53,6 +57,14 @@ class Settings:
             values["knowledge_min_score"] = float(min_score)
         if traces := environ.get("GATEWAY_TRACES"):
             values["traces"] = traces
+        if admin_group := environ.get("GATEWAY_ADMIN_GROUP"):
+            values["admin_group"] = admin_group.strip()
+        if secret_keys := environ.get("GATEWAY_SECRET_KEYS"):
+            values["secret_keys"] = secret_keys
+        if local_hosts := _split(environ.get("GATEWAY_LOCAL_PROVIDER_HOSTS")):
+            values["local_provider_hosts"] = frozenset(h.lower() for h in local_hosts)
+        if per_minute := environ.get("GATEWAY_AGENT_MESSAGES_PER_MINUTE"):
+            values["agent_messages_per_minute"] = int(per_minute)
         return cls(**values)
 
 

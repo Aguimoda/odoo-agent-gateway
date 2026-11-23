@@ -1,4 +1,4 @@
-"""FastAPI application: `/health`, the approval API at `/approvals` and MCP at `/mcp`."""
+"""FastAPI application: `/health`, `/approvals`, `/admin` and MCP at `/mcp`."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from mcp.server.transport_security import TransportSecuritySettings
 
 from odoo_agent_gateway import __version__, tracing
+from odoo_agent_gateway.admin import build_admin_router
 from odoo_agent_gateway.approvals import build_approval_router
 from odoo_agent_gateway.audit import AuditSink, PostgresAuditSink
 from odoo_agent_gateway.config import Settings
@@ -19,9 +20,13 @@ from odoo_agent_gateway.embeddings import FastEmbedEmbedder
 from odoo_agent_gateway.gateway import Gateway, HttpClientFactory, OdooProvider
 from odoo_agent_gateway.knowledge import KnowledgeSearch
 from odoo_agent_gateway.knowledge_store import PostgresKnowledgeStore
+from odoo_agent_gateway.llm import ChatClient
 from odoo_agent_gateway.proposal_store import PostgresProposalStore
 from odoo_agent_gateway.proposals import ProposalService
+from odoo_agent_gateway.provider_store import PostgresProviderStore
+from odoo_agent_gateway.providers import ProviderRegistry
 from odoo_agent_gateway.ratelimit import RateLimiter
+from odoo_agent_gateway.secretbox import SecretBox
 from odoo_agent_gateway.server import build_mcp_server
 from odoo_agent_gateway.tools import Limits
 
@@ -32,6 +37,7 @@ def create_app(
     audit_sink: AuditSink | None = None,
     knowledge: Any = None,
     proposals: Any = None,
+    llm_http: httpx2.AsyncClient | None = None,
 ) -> FastAPI:
     """Build the application. A factory keeps tests isolated and configuration explicit."""
     settings = settings or Settings.from_env(os.environ)
@@ -61,7 +67,21 @@ def create_app(
         proposal_store = PostgresProposalStore(settings.database_url)
         proposals = ProposalService(proposal_store, limits)
 
-    # One gateway path, one rate limiter, for both channels.
+    # Providers and the agent need the database and the master keys (ADR 0015).
+    provider_store: PostgresProviderStore | None = None
+    registry: ProviderRegistry | None = None
+    llm_client = llm_http
+    if settings.database_url and settings.secret_keys:
+        provider_store = PostgresProviderStore(settings.database_url)
+        llm_client = llm_client or httpx2.AsyncClient(follow_redirects=False)
+        registry = ProviderRegistry(
+            provider_store,
+            SecretBox.from_env(settings.secret_keys),
+            ChatClient(llm_client),
+            local_hosts=settings.local_provider_hosts,
+        )
+
+    # One gateway path, one rate limiter, for every channel.
     gateway = Gateway(provider, audit_sink, RateLimiter(settings.rate_limit_per_minute))
     mcp_server = build_mcp_server(
         settings,
@@ -84,7 +104,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await audit_sink.start()  # applies the schema; fails start-up if the DB is down
-        for store in (knowledge_store, proposal_store):
+        for store in (knowledge_store, proposal_store, provider_store):
             if store is not None:
                 await store.start()
         if embedder is not None:
@@ -95,7 +115,9 @@ def create_app(
         finally:
             await provider.aclose()
             await audit_sink.close()
-            for store in (knowledge_store, proposal_store):
+            if llm_client is not None:
+                await llm_client.aclose()
+            for store in (knowledge_store, proposal_store, provider_store):
                 if store is not None:
                     await store.close()
 
@@ -106,5 +128,8 @@ def create_app(
         return {"status": "ok", "version": __version__}
 
     app.include_router(build_approval_router(gateway, proposals, settings.allowed_hosts))
+    app.include_router(
+        build_admin_router(gateway, registry, settings.admin_group, settings.allowed_hosts)
+    )
     app.mount("/", mcp_app)  # serves /mcp; mounted last so it does not shadow other routes
     return app

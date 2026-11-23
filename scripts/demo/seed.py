@@ -1,6 +1,6 @@
 """Demo data for the Odoo Agent Gateway. Runs INSIDE Odoo (`odoo shell`), never in the gateway.
 
-Creates two users with different sales permissions, a few sale orders for each, and an
+Creates two users with different sales permissions, an IT administrator, a few sale orders for each, and an
 API key per user. Safe to run more than once: users, partners and orders are reused;
 a fresh API key is issued on every run. The result is printed as one JSON line that
 `setup_demo.py` reads. `env` is provided by `odoo shell`.
@@ -36,6 +36,8 @@ luis = ensure_user("luis", "Luis (Management)", [group_sales_admin])
 # ADR 0011: builds the knowledge index offline. Reads all sales documents; not an administrator.
 group_all_docs = env.ref("sales_team.group_sale_salesman_all_leads")  # Sales: all documents
 indexer = ensure_user("indexer", "Knowledge indexer (service)", [group_all_docs])
+# ADR 0015: administers the assistant's providers. Odoo Settings group, no sales rights.
+carmen = ensure_user("carmen", "Carmen (IT)", [env.ref("base.group_system")])
 
 
 def ensure_partner(name):
@@ -106,7 +108,7 @@ keys = {
     .with_user(user)
     .sudo()
     ._generate(None, "odoo-agent-gateway demo", expires)
-    for user in (ana, luis, indexer)
+    for user in (ana, luis, indexer, carmen)
 }
 
 env.cr.commit()

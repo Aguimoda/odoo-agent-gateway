@@ -53,3 +53,26 @@ def test_the_knowledge_threshold_defaults_to_the_calibrated_value_and_can_be_ove
 
     assert default.knowledge_min_score == DEFAULT_MIN_SCORE == 0.42
     assert custom.knowledge_min_score == 0.3
+
+
+def test_agent_settings_and_their_defaults():
+    defaults = Settings.from_env({"ODOO_URL": "http://odoo", "ODOO_DB": "demo"})
+    assert defaults.admin_group == "base.group_system"
+    assert defaults.secret_keys is None
+    assert defaults.local_provider_hosts == frozenset()
+    assert defaults.agent_messages_per_minute == 10
+
+    settings = Settings.from_env(
+        {
+            "ODOO_URL": "http://odoo",
+            "ODOO_DB": "demo",
+            "GATEWAY_ADMIN_GROUP": "base.group_erp_manager",
+            "GATEWAY_SECRET_KEYS": "fake-master-key-for-tests",
+            "GATEWAY_LOCAL_PROVIDER_HOSTS": "Ollama, llm-box",
+            "GATEWAY_AGENT_MESSAGES_PER_MINUTE": "5",
+        }
+    )
+    assert settings.admin_group == "base.group_erp_manager"
+    assert settings.local_provider_hosts == frozenset({"ollama", "llm-box"})
+    assert settings.agent_messages_per_minute == 5
+    assert "fake-master-key-for-tests" not in repr(settings)
