@@ -4,7 +4,7 @@
 
 A permission-aware [MCP](https://modelcontextprotocol.io) gateway that lets AI agents work on Odoo **as the person asking, never as an administrator**.
 
-> **Status: milestone M7.1 done (version 0.7.1).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Since M7 people use it from a web app: chat, approvals inbox and admin panel, with the Odoo key kept on the server. M7.1 made it work with real free providers (Groq, Gemini, OpenRouter, Cloudflare): a model catalog, a tokens-per-minute budget and a final answer that always comes. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Not production-ready yet: the Odoo module comes in M8 and the public deployment in M9.
+> **Status: milestone M8 done (version 0.8.0).** Nine MCP tools: seven to read (including permission-safe retrieval) and two to propose changes that a different person approves through a separate API. Each call runs with the caller's own Odoo API key, is audited, rate-limited and traced. Since M6 the gateway also runs the assistant itself: streamed answers, providers configured by Odoo administrators with encrypted keys, and provider failures explained instead of hidden. Since M7 people use it from a web app: chat, approvals inbox and admin panel, with the Odoo key kept on the server. M7.1 made it work with real free providers (Groq, Gemini, OpenRouter, Cloudflare): a model catalog, a tokens-per-minute budget and a final answer that always comes. Retrieval quality is measured against a labelled set and gated in CI, and the whole acceptance suite runs against a real Odoo 18 on every push. Since M8 it works inside Odoo too: an Odoo module adds the assistant's button, side panel, inbox and settings, and signs people in without them ever seeing a key. Not production-ready yet: the public deployment comes in M9.
 
 ## The problem
 
@@ -65,7 +65,7 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | Done |
 | M7 | Web chat, admin panel and approval inbox | Done |
 | M7.1 | Model catalog, provider templates, token budget, fixes from real providers | Done |
-| M8 | Odoo module: the chat and the inbox inside Odoo | Planned |
+| M8 | Odoo module: the chat and the inbox inside Odoo | Done |
 | M9 | Cloud deployment with a public demo, and a short video | Planned |
 
 The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPEC.md) (Spanish).
@@ -207,6 +207,29 @@ For development, `npm --prefix web run dev` serves the app with hot reload on po
 
 ![The approvals inbox: current value against the proposed one](docs/images/approvals.png)
 
+### Inside Odoo
+
+![The assistant's panel inside Odoo, answering as Ana](docs/images/odoo-panel.jpg)
+
+`odoo_addon/agent_gateway_connector` is an Odoo 18 Community module ([ADR 0021](docs/adr/0021-odoo-module-short-lived-key-and-ticket.md)). It adds a button to Odoo's top bar that opens the assistant in a side panel, an **Assistant** menu with the chat, the approvals inbox and (for Settings administrators) the administration, and **Settings → AI assistant**.
+
+Nobody pastes a key:
+
+1. The first time, a notice says the assistant works as the person, with exactly their rights, what reaches the AI provider and how to revoke. Nothing is created before they allow it.
+2. The module then creates, **as the person and never as an administrator**, an Odoo API key limited to RPC that expires after 8 hours, and hands it to the gateway's `POST /session/ticket` server to server.
+3. The browser gets a one-time ticket (60 seconds, in the URL fragment so it reaches no server log) and redeems it for the usual `HttpOnly` cookie. The key never reaches the browser.
+4. A new key is made only when the panel has no session; old ones expire on their own (at most five per person). If the browser holds someone else's gateway session, the panel closes it first.
+5. **Revoke assistant access**, in the person's Preferences, deletes the assistant's keys and the consent; the gateway session stops working at once.
+
+To try it, the demo installs the module and configures it (`setup_demo.py`), and gives Ana, Luis and Carmen passwords for Odoo in `.env.demo-keys`. Sign in to http://127.0.0.1:8069 and press the speech-bubble button. The gateway needs `GATEWAY_EMBED_ORIGINS` (the Odoo origins allowed to show it in a panel) and, when Odoo runs in Docker, `host.docker.internal:*` in `GATEWAY_ALLOWED_HOSTS`; the demo keys file sets both.
+
+**Deployment requirement:** the cookie is `SameSite=Strict` and browsers block third-party cookies, so Odoo and the gateway must be on the same site (for example `odoo.example.com` and `assistant.example.com`). The module's own tests run inside Odoo:
+
+```bash
+docker compose run --rm odoo odoo -d addon_test -i agent_gateway_connector --without-demo=all \
+  --test-enable --test-tags /agent_gateway_connector --stop-after-init --no-http
+```
+
 ### Tests
 
 ```bash
@@ -269,6 +292,7 @@ No miss is a safety failure. Asked for "referencias de cliente", the agent liste
 ```
 docs/              specification, tool catalogue, milestone specs, decision records (ADR)
 web/               the web app: React, TypeScript, Vite (ADR 0019)
+odoo_addon/        the Odoo module agent_gateway_connector (ADR 0021)
 scripts/demo/      reproducible demo data for Odoo, and the demo handbook
 evals/             labelled retrieval set, agent scenarios and committed results
 src/odoo_agent_gateway/

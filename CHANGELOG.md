@@ -4,6 +4,24 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-23
+
+Milestone M8: the assistant inside Odoo (ADR 0021).
+
+### Added
+
+- Odoo 18 module `agent_gateway_connector` (`odoo_addon/`): a top-bar button with a side panel, an Assistant menu (chat, approvals inbox, administration for Settings administrators), Settings → AI assistant, and "Revoke assistant access" in each person's Preferences.
+- Consent before anything: the module creates, as the person and never with sudo, an Odoo API key limited to RPC that expires after 8 hours, and hands it to the gateway server to server. At most five per person; failures leave none.
+- `POST /session/ticket` and `POST /session/redeem`: a one-time ticket (60 seconds, stored as a hash, single use, in the URL fragment) that the panel exchanges for the usual cookie; a ticket never works as a cookie. Migration 008.
+- `GATEWAY_EMBED_ORIGINS`: the Odoo origins allowed to show the app in a panel (`frame-ancestors`); by default nobody.
+- The web app's compact mode under `/app/embed`, which asks the Odoo page for a ticket when it has no session and closes a session that belongs to someone else.
+- The module's ten tests run inside Odoo in CI, and browser tests sign in to Odoo, allow the assistant, chat, revoke, and open the inbox from Odoo's menu.
+- Demo: the module installed and configured, and browser passwords for Ana, Luis and Carmen.
+
+### Fixed
+
+- Adding a model to a provider without a default made it the default for the whole gateway, silently replacing another provider's default.
+
 ## [0.7.1] - 2026-11-23
 
 Milestone M7.1: what the first tests with real free providers (Groq, Gemini, OpenRouter, NVIDIA, Cloudflare) showed, fixed and measured (ADR 0020).
