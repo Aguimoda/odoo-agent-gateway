@@ -250,6 +250,55 @@
   gap: var(--space-2);
 }
 
+.catalog {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.catalog-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.catalog-filters .input {
+  max-width: 18rem;
+}
+
+.catalog-table {
+  max-height: 26rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+
+.catalog-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface, var(--bg));
+}
+
+.catalog-table .badge {
+  margin-left: var(--space-2);
+}
+
+.catalog-added {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.catalog-added svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
 .preset-facts {
   display: flex;
   flex-wrap: wrap;

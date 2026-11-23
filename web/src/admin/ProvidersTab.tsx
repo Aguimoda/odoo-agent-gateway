@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, Clock, KeyRound, Pencil, Plug, Plus, ShieldAlert, Star, Trash2, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Clock, KeyRound, LibraryBig, Pencil, Plug, Plus, ShieldAlert, Star, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { ApiError, del, get, patch, post } from "../api/client";
@@ -7,6 +7,7 @@ import { useI18n, type MessageKey } from "../i18n";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useToast } from "../ui/Toast";
 import { useWorkspace } from "../workspace";
+import { CatalogView } from "./CatalogView";
 import { PRESETS, presetBaseUrl } from "./presets";
 
 const TIER_TONE: Record<string, string> = { free: "badge-success", trial: "badge-warning", paid: "", local: "badge-accent" };
@@ -469,6 +470,7 @@ function ProviderPanel({
   const { t, formatDate } = useI18n();
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<TestResult | null>(null);
+  const [browsing, setBrowsing] = useState(false);
 
   const runTest = async () => {
     setTesting(true);
@@ -517,6 +519,16 @@ function ProviderPanel({
           </div>
         </div>
         <div className="provider-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setBrowsing((open) => !open)}
+            disabled={!provider.key_set}
+            aria-expanded={browsing}
+          >
+            <LibraryBig aria-hidden />
+            {t("catalog.open")}
+          </button>
           <button type="button" className="btn btn-sm" onClick={() => void runTest()} disabled={testing || !provider.key_set}>
             {testing ? <span className="spinner" aria-hidden /> : <Plug aria-hidden />}
             {testing ? t("providers.testing") : t("providers.test")}
@@ -545,6 +557,7 @@ function ProviderPanel({
       <div className="panel-divider" />
       <div className="panel-body">
         <ModelsSection provider={provider} offered={test?.ok ? (test.models ?? []) : null} onChange={onChange} />
+        {browsing && <CatalogView provider={provider} onChange={onChange} onClose={() => setBrowsing(false)} />}
       </div>
     </article>
   );

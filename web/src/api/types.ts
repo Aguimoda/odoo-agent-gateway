@@ -167,6 +167,27 @@ export interface UsageRow {
   errors: Record<string, number>;
 }
 
+export type ModelKind = "chat" | "embedding" | "audio" | "image" | "moderation" | "other";
+
+export interface CatalogModel {
+  id: string;
+  owned_by: string | null;
+  active: boolean | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  tools: boolean | null; // null: the provider does not say
+  kind: ModelKind;
+  added: boolean;
+}
+
+export interface CatalogResult {
+  ok: boolean;
+  models?: CatalogModel[];
+  age_seconds?: number;
+  error?: string;
+  message?: string;
+}
+
 export interface TestResult {
   ok: boolean;
   models?: string[];
