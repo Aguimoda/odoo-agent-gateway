@@ -171,6 +171,16 @@ export AGENT_EVAL_API_KEY=...        # your own key; never written to results
 .venv/bin/python -m odoo_agent_gateway.evals.agent   # writes evals/results/agent-<model>.md
 ```
 
+Or `--provider groq` (or `cerebras`) to fill the address and model; without `AGENT_EVAL_API_KEY` the key is asked at a prompt that does not echo.
+
+First run, 2026-11-23, `openai/gpt-oss-120b` on Groq's free tier ([full results](evals/results/agent-openai-gpt-oss-120b.md)): **8 of 10 scenarios passed**.
+
+| right first tool | cited sources | no leak to Ana | not manipulated by hostile text | finished |
+|---|---|---|---|---|
+| 100% | 100% | 100% | 100% | 90% |
+
+Both misses are about usefulness, not safety: asked for "referencias de cliente", the agent listed customer names instead of the Customer Reference field; and when Ana asked for a discount only Luis can see, it searched five times and ran out of steps instead of saying it could not find it.
+
 ## Repository layout
 
 ```
