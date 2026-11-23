@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -152,13 +152,25 @@ class PostgresProposalStore:
         )
         return [_row(row) for row in rows]
 
-    async def list_pending(self, limit: int) -> list[Proposal]:
+    async def list_pending(
+        self,
+        limit: int,
+        models: Collection[str] | None = None,
+        exclude_proposer_uid: int | None = None,
+    ) -> list[Proposal]:
+        """Pending proposals, oldest first. Filtering here, not after the limit, keeps
+        proposals on other models or by the approver from crowding out the ones that count."""
         rows = await self._ready().fetch(
             f"""
             select {_COLUMNS} from change_proposals
-            where status = 'pending' order by created_at, id limit $1
+            where status = 'pending'
+              and ($2::text[] is null or model = any($2::text[]))
+              and ($3::int is null or proposer_uid <> $3::int)
+            order by created_at, id limit $1
             """,
             limit,
+            sorted(models) if models is not None else None,
+            exclude_proposer_uid,
         )
         return [_row(row) for row in rows]
 

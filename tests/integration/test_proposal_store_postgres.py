@@ -144,6 +144,12 @@ async def test_proposals_are_listed_by_proposer_and_pending(store):
 
     assert [p.id for p in await store.list_by_proposer(proposer_uid, None, 10)] == [mine.id]
     assert mine.id in [p.id for p in await store.list_pending(1000)]
+    # Filtered in SQL, before the limit: other models and the approver's own are left out.
+    assert mine.id in [p.id for p in await store.list_pending(5, models=[mine.model])]
+    assert mine.id not in [p.id for p in await store.list_pending(1000, models=["res.partner"])]
+    assert mine.id not in [
+        p.id for p in await store.list_pending(1000, exclude_proposer_uid=mine.proposer_uid)
+    ]
 
 
 async def test_short_reasons_are_refused_by_the_database(store):

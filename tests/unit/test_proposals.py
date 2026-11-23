@@ -113,8 +113,14 @@ class MemoryStore:
         ]
         return found[:limit]
 
-    async def list_pending(self, limit):
-        return [p for p in self.items.values() if p.status == "pending"][:limit]
+    async def list_pending(self, limit, models=None, exclude_proposer_uid=None):
+        return [
+            p
+            for p in self.items.values()
+            if p.status == "pending"
+            and (models is None or p.model in models)
+            and p.proposer_uid != exclude_proposer_uid
+        ][:limit]
 
     async def decide(self, proposal_id, decider, *, decider_login, decider_uid, note):
         proposal = self.items.get(proposal_id)

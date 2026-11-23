@@ -144,9 +144,12 @@ class ProposalService:
     async def pending_for(self, session: Session, limit: Any = None) -> dict[str, Any]:
         """Pending proposals by others, on records this approver can read, with live values."""
         limit = self._check_limit(limit)
+        pending = await self._store.list_pending(
+            200, models=self._limits.allowed_models, exclude_proposer_uid=session.uid
+        )
         candidates = [
             proposal
-            for proposal in await self._store.list_pending(200)
+            for proposal in pending
             if proposal.proposer_uid != session.uid
             and proposal.model in self._limits.allowed_models
         ]
