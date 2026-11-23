@@ -80,7 +80,12 @@ Se publica una tabla con los resultados de cada versión.
 | M3 | RAG con pgvector filtrado por permisos | RAG | RAG y bases vectoriales |
 | M4 | Escrituras con aprobación | Control humano | Seguridad de agentes |
 | M5 | Evaluación completa y trazas | Evaluación y observabilidad | Evaluación, observabilidad |
-| M6 | Despliegue en la nube con URL pública, README en inglés y vídeo de 90 segundos | Nube y presentación | Azure o AWS |
+| M6 | Servicio de agente con streaming, proveedores con claves cifradas, errores explicados y uso | Producto con IA, fiabilidad | Integración con LLM |
+| M7 | Chat web, panel de administración y bandeja de aprobaciones | Frontend de producto | Frontend |
+| M8 | Módulo de Odoo con el chat y la bandeja | Integración en Odoo | Odoo |
+| M9 | Despliegue en la nube con URL pública y vídeo | Nube y presentación | Azure o AWS |
+
+M6 a M9 salen del plan de producto (`PRODUCT-PLAN.md`, 2026-11-23), que sustituyó el antiguo M6 (solo despliegue).
 
 El orden es deliberado: tras M1 ya se puede enlazar algo útil a SpainLink y T-Innova, y cada hito deja el repositorio presentable.
 
@@ -99,5 +104,5 @@ El orden es deliberado: tras M1 ya se puede enlazar algo útil a SpainLink y T-I
 
 ## 10. Decisiones aplazadas
 
-- **Nube de despliegue** (Azure Container Apps u otra): se decide al llegar a M6.
-- **Cliente MCP para el vídeo de la demo:** se decide al llegar a M6.
+- **Nube de despliegue** (Azure Container Apps u otra): se decide al llegar a M9.
+- **Cliente para el vídeo de la demo:** el chat propio de M7 o el módulo de Odoo de M8.

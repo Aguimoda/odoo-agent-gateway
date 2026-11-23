@@ -62,7 +62,10 @@ Deliberately not offered: deleting records, free-form SQL, calling arbitrary Odo
 | M3 | Retrieval with pgvector, filtered by permissions | Done |
 | M4 | Write proposals with four-eyes approval | Done |
 | M5 | Retrieval evaluation in CI, calibrated threshold, traces, usage report, real-agent harness | Done |
-| M6 | Cloud deployment with a public demo, and a short video | Next |
+| M6 | Agent service: streamed answers, providers with encrypted keys, explained provider failures, usage | In progress |
+| M7 | Web chat, admin panel and approval inbox | Planned |
+| M8 | Odoo module: the chat and the inbox inside Odoo | Planned |
+| M9 | Cloud deployment with a public demo, and a short video | Planned |
 
 The full plan, threat model and evaluation design are in [docs/SPEC.md](docs/SPEC.md) (Spanish).
 
