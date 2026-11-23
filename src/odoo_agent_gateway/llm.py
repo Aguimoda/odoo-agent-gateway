@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -61,12 +62,19 @@ OnToken = Callable[[str], Awaitable[None]]
 class ProviderFailure(Exception):
     """A classified provider failure. The message is ours, never the provider's text."""
 
-    def __init__(self, kind: str, retry_after: float | None = None, status: int | None = None):
+    def __init__(
+        self,
+        kind: str,
+        retry_after: float | None = None,
+        status: int | None = None,
+        code: str | None = None,
+    ):
         super().__init__(MESSAGES[kind])
         self.kind = kind
         self.message = MESSAGES[kind]
         self.retry_after = retry_after
         self.status = status
+        self.code = code  # the provider's short error code, for diagnosis (ADR 0020)
 
     def __repr__(self) -> str:
         return f"ProviderFailure({self.kind!r}, retry_after={self.retry_after!r})"
@@ -104,6 +112,50 @@ def _retry_after(headers: Mapping[str, str]) -> float | None:
     return None
 
 
+_CODE = re.compile(r"^[A-Za-z0-9_.:-]{1,60}$")
+
+
+def _error_code(body: str, status: int) -> str:
+    """The provider's short error code (never its message): safe to store and log."""
+    try:
+        data: Any = json.loads(body)
+    except (ValueError, TypeError):
+        return str(status)
+    if isinstance(data, list) and data:
+        data = data[0]
+    if not isinstance(data, dict):
+        return str(status)
+    error = data.get("error")
+    if not isinstance(error, dict):
+        errors = data.get("errors")
+        error = errors[0] if isinstance(errors, list) and errors else data
+    if not isinstance(error, dict):
+        return str(status)
+    for key in ("status", "code", "type"):
+        value = error.get(key)
+        if isinstance(value, (str, int)) and not isinstance(value, bool):
+            text = str(value)
+            if text != str(status) or key == "code":
+                return text if _CODE.match(text) else str(status)
+    return str(status)
+
+
+def classify_stream_error(error: Any) -> ProviderFailure:
+    """An `error` event inside a stream, classified like an HTTP error (ADR 0020)."""
+    raw = error if isinstance(error, dict) else {"message": str(error)}
+    code = raw.get("code")
+    status = raw.get("status_code") or (code if isinstance(code, int) else None)
+    text = json.dumps(raw).lower()
+    if not isinstance(status, int) or not 400 <= status < 600:
+        if "rate limit" in text or "rate_limit" in text or "429" in text:
+            status = 429
+        elif any(w in text for w in ("overloaded", "unavailable", "timeout", "internal", "server")):
+            status = 503
+        else:
+            status = 400
+    return classify_http(status, json.dumps({"error": raw}), {})
+
+
 def classify_http(status: int, body: str, headers: Mapping[str, str]) -> ProviderFailure:
     text = (body or "").lower()
     retry_after = _retry_after(headers)
@@ -121,7 +173,9 @@ def classify_http(status: int, body: str, headers: Mapping[str, str]) -> Provide
         kind = "provider_unavailable"
     else:
         kind = "bad_request"
-    return ProviderFailure(kind, retry_after=retry_after, status=status)
+    return ProviderFailure(
+        kind, retry_after=retry_after, status=status, code=_error_code(body, status)
+    )
 
 
 class CircuitBreaker:
@@ -296,7 +350,7 @@ async def _from_stream(response: httpx2.Response, on_token: OnToken) -> ChatResu
             continue
         if "error" in chunk:
             logger.warning("provider error in stream: %s", json.dumps(chunk["error"])[:500])
-            raise ProviderFailure("provider_unavailable")
+            raise classify_stream_error(chunk["error"])
         _usage(chunk, result)
         for choice in chunk.get("choices") or []:
             result.finish_reason = choice.get("finish_reason") or result.finish_reason

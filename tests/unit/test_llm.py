@@ -253,6 +253,45 @@ async def test_error_inside_the_stream_is_a_failure_and_retried_before_any_text(
     assert len(recorder.requests) == 3
 
 
+@pytest.mark.parametrize(
+    ("error", "kind", "code"),
+    [
+        ({"message": "Rate limit reached", "code": 429}, "rate_limited", "429"),
+        (
+            {"message": "tool call failed", "code": "tool_use_failed"},
+            "bad_request",
+            "tool_use_failed",
+        ),
+        (
+            {"message": "The model is overloaded", "type": "server_error"},
+            "provider_unavailable",
+            "server_error",
+        ),
+    ],
+)
+async def test_errors_inside_the_stream_are_classified_by_their_content(error, kind, code):
+    """ADR 0020: a stream error is not always "provider down"."""
+    recorder = Recorder(*(stream_response({"error": error}) for _ in range(3)))
+    with pytest.raises(ProviderFailure) as raised:
+        await client(recorder).complete(TARGET, [], [], _ignore)
+    assert raised.value.kind == kind
+    assert raised.value.code == code
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "code"),
+    [
+        (400, '{"error": {"code": "tool_use_failed", "message": "x"}}', "tool_use_failed"),
+        (400, '{"errors": [{"code": 5006, "message": "AiError"}], "success": false}', "5006"),
+        (400, '[{"error": {"code": 400, "status": "INVALID_ARGUMENT"}}]', "INVALID_ARGUMENT"),
+        (503, "<html>busy</html>", "503"),
+        (400, '{"error": {"code": "bad <script> code with spaces and more"}}', "400"),
+    ],
+)
+def test_the_providers_short_error_code_is_kept(status, body, code):
+    assert classify_http(status, body, {}).code == code
+
+
 async def test_failure_after_text_was_streamed_is_not_retried():
     recorder = Recorder(stream_response(delta(content="Hola"), {"error": {"message": "x"}}))
     with pytest.raises(ProviderFailure):

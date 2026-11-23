@@ -7,6 +7,7 @@ import pytest
 from odoo_agent_gateway.assistant import (
     DEFAULT_INSTRUCTIONS,
     TurnFailed,
+    answer_language,
     internal_host,
     run_turn,
     system_prompt,
@@ -68,7 +69,7 @@ class Events:
         return [kind for kind, _ in self.items]
 
 
-async def turn(model, tools=None, history=None, disabled=(), max_steps=6):
+async def turn(model, tools=None, history=None, disabled=(), max_steps=6, language="es"):
     events = Events()
     result = await run_turn(
         model,
@@ -79,6 +80,7 @@ async def turn(model, tools=None, history=None, disabled=(), max_steps=6):
         disabled_tools=frozenset(disabled),
         max_steps=max_steps,
         emit=events,
+        language=language,
     )
     return result, events
 
@@ -188,6 +190,60 @@ async def test_step_limit_asks_for_a_final_answer_without_tools():
     assert ("notice", {"kind": "step_limit"}) in [
         (k, {"kind": d["kind"]}) for k, d in events.items if k == "notice"
     ]
+
+
+def _searching(n):
+    return [
+        ChatResult(tool_calls=[call("search_knowledge", {"query": str(i)}, f"c{i}")])
+        for i in range(n)
+    ]
+
+
+async def test_final_call_carries_tool_results_as_text_not_tool_calls():
+    tools = FakeTools(
+        {"search_knowledge": (True, json.dumps({"results": ["shipping takes 3 days"]}))}
+    )
+    model = FakeModel(*_searching(2), ChatResult(content="Son 3 días."))
+    await turn(model, tools, max_steps=2)
+
+    final = model.sent[-1]["messages"]
+    assert all(m["role"] in ("system", "user", "assistant") for m in final)
+    assert not any("tool_calls" in m for m in final)
+    assert "shipping takes 3 days" in final[-1]["content"]
+    assert "search_knowledge" in final[-1]["content"]
+
+
+@pytest.mark.parametrize("reply", ["", "   ", "<tool_call>search_knowledge", "<|call|>{}"])
+async def test_empty_or_markup_final_answer_becomes_an_honest_message(reply):
+    model = FakeModel(*_searching(2), ChatResult(content=reply))
+    result, events = await turn(model, max_steps=2, language="es")
+
+    assert result.content.startswith("No he podido terminar")
+    streamed = "".join(d["text"] for k, d in events.items if k == "token")
+    assert streamed == result.content  # the markup never reached the person
+    assert "no_final_answer" in [d["kind"] for k, d in events.items if k == "notice"]
+
+
+async def test_honest_message_follows_the_language():
+    model = FakeModel(*_searching(1), ChatResult(content=""))
+    result, _ = await turn(model, max_steps=1, language="en")
+    assert result.content.startswith("I could not finish")
+
+
+async def test_a_real_final_answer_is_kept_and_streamed_once():
+    model = FakeModel(*_searching(1), ChatResult(content="No lo he encontrado."))
+    result, events = await turn(model, max_steps=1)
+    assert result.content == "No lo he encontrado."
+    streamed = "".join(d["text"] for k, d in events.items if k == "token")
+    assert streamed == "No lo he encontrado."
+
+
+@pytest.mark.parametrize(
+    ("header", "language"),
+    [("es-ES,es;q=0.9,en;q=0.8", "es"), ("en-US,en;q=0.9", "en"), ("", "en"), ("fr", "en")],
+)
+def test_answer_language_from_accept_language(header, language):
+    assert answer_language(header) == language
 
 
 async def test_history_goes_before_the_question():
