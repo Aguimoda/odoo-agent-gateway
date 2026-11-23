@@ -208,7 +208,9 @@ def test_models_test_connection_and_default(gateway, demo, provider):
     (model,) = added.json()["models"]
     assert model["is_default"] and model["status"] == "ok"
 
-    disabled = gateway.patch(f"/admin/models/{model['id']}", json={"enabled": False}, headers=carmen)
+    disabled = gateway.patch(
+        f"/admin/models/{model['id']}", json={"enabled": False}, headers=carmen
+    )
     assert disabled.json()["models"][0]["status"] == "disabled"
     assert gateway.delete(f"/admin/models/{model['id']}", headers=carmen).json()["models"] == []
 
@@ -246,9 +248,7 @@ def test_settings_round_trip(gateway, demo):
         assert changed.json()["disabled_tools"] == ["propose_change"]
         assert changed.json()["updated_by"] == "carmen"
         assert gateway.patch("/admin/settings", json={}, headers=carmen).status_code == 422
-        refused = gateway.patch(
-            "/admin/settings", json={"retention_days": 0}, headers=carmen
-        )
+        refused = gateway.patch("/admin/settings", json={"retention_days": 0}, headers=carmen)
         assert refused.status_code == 422
     finally:
         gateway.patch(
