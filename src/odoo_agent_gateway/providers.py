@@ -9,6 +9,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -16,6 +17,12 @@ from urllib.parse import urlsplit, urlunsplit
 
 import anyio
 
+from odoo_agent_gateway.catalog import (
+    KINDS,
+    cloudflare_search_url,
+    normalize_cloudflare,
+    normalize_models,
+)
 from odoo_agent_gateway.llm import (
     MAX_WAITED_RETRY_AFTER,
     ChatClient,
@@ -38,6 +45,8 @@ logger = logging.getLogger(__name__)
 LOOPBACK_NAMES = frozenset({"localhost"})
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 MAX_URL_LENGTH = 300
+CATALOG_TTL = 600.0  # seconds a provider's model list is kept
+CATALOG_PAGES = 10  # Cloudflare's search is paged; enough for its whole catalog
 
 
 class ModelUnavailable(InvalidRequest):
@@ -148,6 +157,8 @@ class ProviderRegistry:
         self.breaker = breaker or CircuitBreaker()
         self._clock = clock
         self._per_minute: dict[tuple[str, int], RateLimiter] = {}
+        # provider id -> (fetched at, what the cache depends on, normalized models)
+        self._catalog: dict[int, tuple[float, tuple, list[dict[str, Any]]]] = {}
 
     # Views
 
@@ -279,18 +290,56 @@ class ProviderRegistry:
 
     async def test_provider(self, provider_id: int) -> dict[str, Any]:
         """Ask the provider for its model list: checks URL and key, and helps fill models."""
+        catalog = await self.catalog(provider_id, refresh=True)
+        if not catalog["ok"]:
+            return catalog
+        return {"ok": True, "models": sorted(m["id"] for m in catalog["models"])[:500]}
+
+    async def _fetch_catalog(self, provider: Provider) -> list[dict[str, Any]]:
+        key = self._decrypt(provider)
+        search = cloudflare_search_url(provider.base_url)
+        if search is None:
+            payload = await self._chat.get_json(provider.base_url + "/models", key)
+            models = normalize_models(payload)
+            if not models and not (isinstance(payload, dict) and payload.get("data") == []):
+                raise ProviderFailure("bad_request")
+            return models
+        models: list[dict[str, Any]] = []
+        for page in range(1, CATALOG_PAGES + 1):
+            payload = await self._chat.get_json(search, key, {"page": page, "per_page": 100})
+            batch = normalize_cloudflare(payload)
+            models.extend(batch)
+            if len(batch) < 100:
+                break
+        return models
+
+    async def catalog(self, provider_id: int, refresh: bool = False) -> dict[str, Any]:
+        """What the provider offers, in one shape for all providers (ADR 0020)."""
         provider = await self._provider(provider_id)
         if provider.api_key_encrypted is None:
             raise InvalidRequest("Set the provider's API key first.")
-        key = self._decrypt(provider)
-        try:
-            names = await self._chat.list_models(provider.base_url, key)
-        except ProviderFailure as failure:
-            await self.record_failure(provider, None, failure)
-            return {"ok": False, "error": failure.kind, "message": failure.message}
-        health: dict[str, Any] = {"last_ok_at": self._clock(), "auth_failed_at": None}
-        await self.store.record_health(provider.id, health)
-        return {"ok": True, "models": names[:500]}
+        depends_on = (provider.base_url, provider.key_updated_at)
+        cached = self._catalog.get(provider_id)
+        now = time.monotonic()
+        if refresh or cached is None or cached[1] != depends_on or now - cached[0] > CATALOG_TTL:
+            try:
+                models = await self._fetch_catalog(provider)
+            except ProviderFailure as failure:
+                await self.record_failure(provider, None, failure)
+                return {"ok": False, "error": failure.kind, "message": failure.message}
+            health: dict[str, Any] = {"last_ok_at": self._clock(), "auth_failed_at": None}
+            await self.store.record_health(provider.id, health)
+            cached = (now, depends_on, models)
+            self._catalog[provider_id] = cached
+        added = {m.name for m in await self.store.models() if m.provider_id == provider_id}
+        order = {kind: i for i, kind in enumerate(KINDS)}
+        models = sorted(cached[2], key=lambda m: (order.get(m["kind"], 99), m["id"]))
+        return {
+            "ok": True,
+            "provider_id": provider_id,
+            "age_seconds": round(now - cached[0]),
+            "models": [{**m, "added": m["id"] in added} for m in models],
+        }
 
     # Use (agent service)
 

@@ -42,11 +42,44 @@ def demo() -> dict[str, str]:
     return values
 
 
+CLOUDFLARE_ACCOUNT = "0123456789abcdef0123456789abcdef"
+PROVIDER_CALLS: list[str] = []
+
+
 def fake_provider(request: httpx2.Request) -> httpx2.Response:
+    PROVIDER_CALLS.append(request.url.path)
+    if request.headers.get("authorization") != f"Bearer {FAKE_PROVIDER_KEY}":
+        return httpx2.Response(401, json={"error": {"message": "Invalid API Key"}})
+    if request.url.path.endswith("/ai/models/search"):  # Cloudflare Workers AI
+        return httpx2.Response(
+            200,
+            json={
+                "success": True,
+                "result": [
+                    {
+                        "name": "@cf/openai/gpt-oss-120b",
+                        "task": {"name": "Text Generation"},
+                        "properties": [{"property_id": "function_calling", "value": "true"}],
+                    },
+                    {"name": "@cf/baai/bge-m3", "task": {"name": "Text Embeddings"}},
+                ],
+            },
+        )
     if request.url.path.endswith("/models"):
-        if request.headers.get("authorization") != f"Bearer {FAKE_PROVIDER_KEY}":
-            return httpx2.Response(401, json={"error": {"message": "Invalid API Key"}})
-        return httpx2.Response(200, json={"data": [{"id": "model-b"}, {"id": "model-a"}]})
+        return httpx2.Response(
+            200,
+            json={
+                "data": [
+                    {"id": "model-b"},
+                    {
+                        "id": "model-a",
+                        "context_length": 131072,
+                        "supported_parameters": ["tools"],
+                    },
+                    {"id": "text-embedding-small"},
+                ]
+            },
+        )
     return httpx2.Response(404)
 
 
@@ -197,7 +230,7 @@ def test_duplicate_names_conflict(gateway, demo, provider):
 def test_models_test_connection_and_default(gateway, demo, provider):
     carmen = headers(demo, "carmen")
     tested = gateway.post(f"/admin/providers/{provider['id']}/test", headers=carmen)
-    assert tested.json() == {"ok": True, "models": ["model-a", "model-b"]}
+    assert tested.json() == {"ok": True, "models": ["model-a", "model-b", "text-embedding-small"]}
 
     added = gateway.post(
         f"/admin/providers/{provider['id']}/models",
@@ -270,3 +303,71 @@ def test_without_master_keys_providers_are_unavailable(demo):
         response = client.get("/admin/providers", headers=headers(demo, "carmen"))
     assert response.status_code == 503
     assert response.json()["error"] == "providers_unavailable"
+
+
+# Model catalog (ADR 0020)
+
+
+def test_the_catalog_shows_what_each_model_offers(gateway, demo, provider):
+    """Scenario: ver los modelos disponibles de un proveedor."""
+    carmen = headers(demo, "carmen")
+    url = f"/admin/providers/{provider['id']}/catalog"
+    catalog = gateway.get(url, headers=carmen)
+    assert catalog.status_code == 200, catalog.text
+    body = catalog.json()
+    assert body["ok"] is True
+    models = {m["id"]: m for m in body["models"]}
+    assert models["model-a"]["tools"] is True
+    assert models["model-a"]["context_window"] == 131072
+    assert models["model-b"]["tools"] is None  # the provider says nothing about it
+    assert models["text-embedding-small"]["kind"] == "embedding"
+    assert not any(m["added"] for m in models.values())
+    assert FAKE_PROVIDER_KEY not in catalog.text
+
+    gateway.post(
+        f"/admin/providers/{provider['id']}/models", json={"name": "model-a"}, headers=carmen
+    )
+    again = {m["id"]: m for m in gateway.get(url, headers=carmen).json()["models"]}
+    assert again["model-a"]["added"] is True  # scenario: añadir un modelo desde la lista
+
+
+def test_the_catalog_is_cached_until_refreshed(gateway, demo, provider):
+    carmen = headers(demo, "carmen")
+    url = f"/admin/providers/{provider['id']}/catalog"
+    gateway.get(url, headers=carmen)
+    before = len(PROVIDER_CALLS)
+    gateway.get(url, headers=carmen)
+    assert len(PROVIDER_CALLS) == before
+    gateway.get(url + "?refresh=true", headers=carmen)
+    assert len(PROVIDER_CALLS) == before + 1
+
+
+@pytest.mark.parametrize("who", ["ana", "luis"])
+def test_only_administrators_see_the_catalog(gateway, demo, provider, who):
+    """Scenario: solo administradores."""
+    before = len(PROVIDER_CALLS)
+    response = gateway.get(f"/admin/providers/{provider['id']}/catalog", headers=headers(demo, who))
+    assert response.status_code == 403
+    assert len(PROVIDER_CALLS) == before  # the provider was not called
+
+
+def test_cloudflare_models_come_from_its_search_api(gateway, demo):
+    carmen = headers(demo, "carmen")
+    created = gateway.post(
+        "/admin/providers",
+        json={
+            "name": f"cf-{uuid.uuid4().hex[:6]}",
+            "base_url": f"https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT}/ai/v1",
+            "api_key": FAKE_PROVIDER_KEY,
+        },
+        headers=carmen,
+    ).json()
+    try:
+        catalog = gateway.get(f"/admin/providers/{created['id']}/catalog", headers=carmen).json()
+        models = {m["id"]: m for m in catalog["models"]}
+        assert models["@cf/openai/gpt-oss-120b"]["tools"] is True
+        assert models["@cf/baai/bge-m3"]["kind"] == "embedding"
+        tested = gateway.post(f"/admin/providers/{created['id']}/test", headers=carmen).json()
+        assert tested["ok"] is True and "@cf/openai/gpt-oss-120b" in tested["models"]
+    finally:
+        gateway.delete(f"/admin/providers/{created['id']}", headers=carmen)

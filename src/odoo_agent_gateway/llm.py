@@ -297,21 +297,37 @@ class ChatClient:
         except httpx2.HTTPError:
             raise ProviderFailure("provider_unavailable") from None
 
-    async def list_models(self, base_url: str, api_key: str) -> list[str]:
-        url = base_url.rstrip("/") + "/models"
+    async def get_json(
+        self, url: str, api_key: str, params: Mapping[str, Any] | None = None
+    ) -> Any:
+        """GET a provider URL with its key; failures classified like chat calls."""
         try:
             response = await self._http.get(
-                url, headers={"Authorization": f"Bearer {api_key}"}, timeout=20
+                url,
+                params=dict(params or {}),
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=20,
             )
         except httpx2.HTTPError:
             raise ProviderFailure("provider_unavailable") from None
         if response.status_code >= 300:
-            raise classify_http(response.status_code, response.text[:4000], response.headers)
+            text = response.text[:4000]
+            failure = classify_http(response.status_code, text, response.headers)
+            logger.warning(
+                "provider refused: %s %s %s", failure.kind, response.status_code, text[:500]
+            )
+            raise failure
         try:
-            data = response.json().get("data") or []
-            return sorted(str(item["id"]) for item in data if isinstance(item, dict))
-        except (ValueError, KeyError, AttributeError):
+            return response.json()
+        except ValueError:
             raise ProviderFailure("bad_request") from None
+
+    async def list_models(self, base_url: str, api_key: str) -> list[str]:
+        payload = await self.get_json(base_url.rstrip("/") + "/models", api_key)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            raise ProviderFailure("bad_request")
+        return sorted(str(item["id"]) for item in data if isinstance(item, dict) and "id" in item)
 
 
 def _usage(chunk: dict[str, Any], result: ChatResult) -> None:

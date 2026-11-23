@@ -142,6 +142,16 @@ def build_admin_router(
             lambda r, s: r.test_provider(provider_id),
         )
 
+    @router.get("/providers/{provider_id}/catalog")
+    async def catalog(provider_id: int, request: Request, refresh: bool = False) -> Any:
+        """What the provider offers, in one shape: tools, context size, kind (ADR 0020)."""
+        return await respond(
+            request,
+            "admin.catalog",
+            {"provider_id": provider_id, "refresh": refresh},
+            lambda r, s: r.catalog(provider_id, refresh),
+        )
+
     @router.post("/providers/{provider_id}/models")
     async def add_model(provider_id: int, request: Request, body: ModelIn) -> Any:
         data = body.model_dump()
