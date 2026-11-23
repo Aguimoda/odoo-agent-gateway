@@ -32,6 +32,9 @@ dev = [
   "pytest>=8",
   "ruff>=0.8",
 ]
+e2e = [
+  "playwright>=1.50",
+]
 
 [tool.hatch.version]
 path = "src/odoo_agent_gateway/__init__.py"
@@ -44,6 +47,7 @@ testpaths = ["tests"]
 addopts = "-ra -m 'not integration'"
 markers = [
   "integration: needs the Docker stack and demo data (run with: pytest -m integration)",
+  "e2e: drives the built web app in Chromium (also integration; needs the e2e extra)",
 ]
 
 [tool.ruff]

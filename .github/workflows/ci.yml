@@ -36,8 +36,32 @@ jobs:
       - name: Test
         run: pytest
 
+  web:
+    name: Web app (type check, lint, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
   integration:
-    name: Permission-leak suite (real Odoo 18)
+    name: Permission-leak and browser suite (real Odoo 18)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -49,8 +73,17 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: pyproject.toml
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,e2e]"
+      - name: Build the web app
+        run: npm --prefix web ci && npm --prefix web run build
+      - name: Install Chromium for the browser tests
+        run: python -m playwright install --with-deps chromium
       - name: Create throwaway database passwords
         run: >-
           python -c "import pathlib, secrets;
@@ -64,7 +97,7 @@ jobs:
         run: >-
           curl -sSf -o /dev/null --retry 30 --retry-delay 5 --retry-all-errors
           http://127.0.0.1:8069/web/login
-      - name: Create demo data (users Ana and Luis, hostile records)
+      - name: Create demo data (Ana, Luis, Carmen, hostile records)
         run: python scripts/demo/setup_demo.py
       - name: Cache the embedding model
         uses: actions/cache@v6
@@ -75,7 +108,7 @@ jobs:
         run: |
           set -a; . ./.env.demo-keys; set +a
           python -m odoo_agent_gateway.index --docs scripts/demo/knowledge
-      - name: Integration tests
+      - name: Integration and browser tests
         run: pytest -m integration -v
       - name: Container logs on failure
         if: failure()
