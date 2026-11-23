@@ -432,6 +432,11 @@ def odoo_sign_in(page, demo, who: str) -> None:
     page.get_by_label("Password").fill(demo[f"DEMO_{who.upper()}_PASSWORD"])
     page.get_by_role("button", name="Log in").click()
     page.get_by_role("button", name="AI assistant").wait_for(timeout=30_000)
+    page.wait_for_timeout(1000)  # let Odoo finish loading
+    dialogs = page.locator(".modal")
+    if dialogs.count():  # Odoo opened something on its own: say what, instead of timing out
+        text = dialogs.first.inner_text()[:500]
+        raise AssertionError(f"Odoo shows a dialog after sign-in: {text}")
 
 
 def assistant_keys(demo, who: str) -> list[dict]:

@@ -14,6 +14,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
@@ -98,6 +100,21 @@ def main() -> None:
     lines.append("INDEXER_LOGIN=indexer")
     lines.append(f"INDEXER_API_KEY={result['keys']['indexer']}")
     OUTPUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # The running Odoo server loaded its modules before the assistant module was installed:
+    # restart it so it serves the module's code and assets (M8).
+    print("Restarting Odoo so it loads the assistant module...")
+    restart = ["docker", "compose", "restart", "odoo"]
+    subprocess.run(restart, cwd=ROOT, check=True, capture_output=True)
+    deadline = time.monotonic() + 180
+    while True:
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:8069/web/login", timeout=5):
+                break
+        except OSError:
+            if time.monotonic() > deadline:
+                sys.exit("Odoo did not come back after the restart.")
+            time.sleep(2)
 
     print(
         f"Done. Users: ana, luis, carmen, indexer. Orders: {result['orders']}. "
