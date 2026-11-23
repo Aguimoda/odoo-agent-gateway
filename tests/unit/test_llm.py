@@ -163,6 +163,62 @@ async def test_streams_tokens_and_assembles_tool_calls_and_usage():
     ]
     assert (result.prompt_tokens, result.completion_tokens) == (120, 30)
     sent = recorder.requests[0]
+    assert sent.headers["authorization"] == f"Bearer {FAKE_KEY}"
+
+
+async def test_provider_extras_on_a_tool_call_are_kept():
+    # Gemini adds a thought_signature that must go back unchanged in the next request.
+    recorder = Recorder(
+        stream_response(
+            delta(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "search_knowledge", "arguments": "{}"},
+                        "extra_content": {"google": {"thought_signature": "c2ln"}},
+                    }
+                ]
+            ),
+        )
+    )
+
+    async def on_token(text):
+        pass
+
+    result = await client(recorder).complete(
+        TARGET, [{"role": "user", "content": "hi"}], [], on_token
+    )
+    assert result.tool_calls[0]["extra_content"] == {"google": {"thought_signature": "c2ln"}}
+    assert result.tool_calls[0]["function"] == {"name": "search_knowledge", "arguments": "{}"}
+
+
+async def test_non_text_content_pieces_are_turned_into_text():
+    # Cloudflare's Llama sometimes streams a number as the content piece.
+    recorder = Recorder(
+        stream_response(delta(content="Son "), delta(content=3), delta(content=" días"))
+    )
+    tokens = []
+
+    async def on_token(text):
+        tokens.append(text)
+
+    result = await client(recorder).complete(
+        TARGET, [{"role": "user", "content": "hi"}], [], on_token
+    )
+    assert tokens == ["Son ", "3", " días"]
+    assert result.content == "Son 3 días"
+
+
+async def test_streams_tokens_request_shape():
+    recorder = Recorder(stream_response(delta(content="ok")))
+
+    async def on_token(text):
+        pass
+
+    await client(recorder).complete(TARGET, [{"role": "user", "content": "hi"}], [], on_token)
+    sent = recorder.requests[0]
     assert str(sent.url) == "https://api.groq.test/openai/v1/chat/completions"
     assert sent.headers["authorization"] == f"Bearer {FAKE_KEY}"
     body = json.loads(sent.content)

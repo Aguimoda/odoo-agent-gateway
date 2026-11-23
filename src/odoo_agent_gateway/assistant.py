@@ -182,7 +182,8 @@ async def run_turn(
         if final or not reply.tool_calls:
             break
         turn.append(
-            {"role": "assistant", "content": reply.content or None, "tool_calls": reply.tool_calls}
+            # Text, never null: some providers (Cloudflare) refuse a null content.
+            {"role": "assistant", "content": reply.content or "", "tool_calls": reply.tool_calls}
         )
         for call in reply.tool_calls:
             turn.append(

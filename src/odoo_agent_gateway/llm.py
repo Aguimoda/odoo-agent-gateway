@@ -8,6 +8,7 @@ streamed, and never follows redirects (a key is only sent to the configured URL)
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from typing import Any
 
 import anyio
 import httpx2
+
+logger = logging.getLogger(__name__)
 
 KINDS = (
     "rate_limited",
@@ -226,7 +229,12 @@ class ChatClient:
             ) as response:
                 if response.status_code >= 300:
                     text = (await response.aread()).decode("utf-8", "replace")[:4000]
-                    raise classify_http(response.status_code, text, response.headers)
+                    failure = classify_http(response.status_code, text, response.headers)
+                    # The provider's own reason, for diagnosis. The key is never part of it.
+                    logger.warning(
+                        "provider refused: %s %s %s", failure.kind, response.status_code, text[:500]
+                    )
+                    raise failure
                 if "text/event-stream" not in response.headers.get("content-type", ""):
                     return await _from_json(json.loads(await response.aread()), on_token)
                 return await _from_stream(response, on_token)
@@ -262,7 +270,7 @@ async def _from_json(data: dict[str, Any], on_token: OnToken) -> ChatResult:
         raise ProviderFailure("provider_unavailable")
     message = data["choices"][0]["message"]
     result = ChatResult(
-        content=message.get("content") or "",
+        content=str(message.get("content") or ""),
         tool_calls=message.get("tool_calls") or [],
         finish_reason=data["choices"][0].get("finish_reason"),
     )
@@ -287,12 +295,15 @@ async def _from_stream(response: httpx2.Response, on_token: OnToken) -> ChatResu
         except json.JSONDecodeError:
             continue
         if "error" in chunk:
+            logger.warning("provider error in stream: %s", json.dumps(chunk["error"])[:500])
             raise ProviderFailure("provider_unavailable")
         _usage(chunk, result)
         for choice in chunk.get("choices") or []:
             result.finish_reason = choice.get("finish_reason") or result.finish_reason
             change = choice.get("delta") or {}
-            if text := change.get("content"):
+            piece_text = change.get("content")
+            # Some providers (Cloudflare's Llama) stream a number as the content piece.
+            if text := ("" if piece_text is None else str(piece_text)):
                 parts.append(text)
                 await on_token(text)
             for piece in change.get("tool_calls") or []:
@@ -301,6 +312,10 @@ async def _from_stream(response: httpx2.Response, on_token: OnToken) -> ChatResu
                     {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
                 )
                 call["id"] = piece.get("id") or call["id"]
+                # Provider extras (Gemini's thought_signature) must go back unchanged.
+                for key, value in piece.items():
+                    if key not in ("index", "id", "type", "function") and value is not None:
+                        call[key] = value
                 function = piece.get("function") or {}
                 call["function"]["name"] += function.get("name") or ""
                 call["function"]["arguments"] += function.get("arguments") or ""

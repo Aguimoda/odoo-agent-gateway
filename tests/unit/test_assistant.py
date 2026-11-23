@@ -102,6 +102,21 @@ async def test_answer_with_a_tool_streams_events_and_records_tools_without_resul
     assert all("results" not in json.dumps(data) for _, data in events.items)
 
 
+async def test_tool_call_turn_sends_text_content_and_keeps_provider_extras():
+    # Cloudflare refuses content null; Gemini needs its thought_signature sent back as given.
+    signed = call("search_knowledge", {"query": "envío"})
+    signed["extra_content"] = {"google": {"thought_signature": "c2lnbmF0dXJl"}}
+    model = FakeModel(ChatResult(tool_calls=[signed]), ChatResult(content="Son 3 días."))
+    await turn(model)
+
+    assistant = model.sent[1]["messages"][-2]
+    assert assistant["role"] == "assistant"
+    assert assistant["content"] == ""
+    assert assistant["tool_calls"][0]["extra_content"] == {
+        "google": {"thought_signature": "c2lnbmF0dXJl"}
+    }
+
+
 async def test_the_first_message_is_the_safe_system_prompt():
     model = FakeModel(ChatResult(content="Hola"))
     await turn(model)
